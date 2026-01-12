@@ -25,7 +25,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
     // Защищенные маршруты
     Route::middleware(['admin.auth'])->group(function () {
         Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
-        Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        // Избегаем дублирующего имени маршрута
+        Route::get('/dashboard', [DashboardController::class, 'index']);
         Route::post('/dashboard/toggle-auto-quiz', [DashboardController::class, 'toggleAutoQuiz'])->name('dashboard.toggle-auto-quiz');
         Route::post('/dashboard/start-quiz', [DashboardController::class, 'startQuiz'])->name('dashboard.start-quiz');
 
