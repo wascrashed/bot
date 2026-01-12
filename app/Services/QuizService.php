@@ -689,17 +689,27 @@ class QuizService
 
             if (!$selectedAnswer) {
                 // Логировать неудачное распознавание ответа
-                Log::warning('Failed to parse quiz answer', [
-                    'active_quiz_id' => $activeQuizId,
-                    'user_id' => $userId,
-                    'answer_text' => $answerText,
-                    'question_type' => $question->question_type,
-                    'callback_data' => $callbackData,
-                ]);
+                try {
+                    Log::warning('Failed to parse quiz answer', [
+                        'active_quiz_id' => $activeQuizId,
+                        'user_id' => $userId,
+                        'answer_text' => $answerText,
+                        'question_type' => $question->question_type,
+                        'callback_data' => $callbackData,
+                    ]);
+                } catch (\Exception $logError) {
+                    // Игнорируем ошибки логирования
+                }
                 
                 $errorMessage = '❌ Не удалось распознать ваш ответ. Ваш ответ не зарегистрирован.';
                 if ($callbackQueryId) {
-                    $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
+                    // Для callback query уже ответили пустым, но можем попробовать отправить ошибку
+                    // (хотя это может не сработать, если уже ответили)
+                    try {
+                        $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
+                    } catch (\Exception $e) {
+                        // Игнорируем, если уже ответили
+                    }
                 } elseif ($messageId && $chatId) {
                     try {
                         $this->telegram->sendMessage(
@@ -708,22 +718,55 @@ class QuizService
                             ['parse_mode' => 'HTML']
                         );
                     } catch (\Exception $e) {
-                        Log::warning('Failed to send error notification', ['error' => $e->getMessage()]);
+                        try {
+                            Log::warning('Failed to send error notification', ['error' => $e->getMessage()]);
+                        } catch (\Exception $logError) {
+                            // Игнорируем ошибки логирования
+                        }
                     }
                 }
                 return;
             }
 
+            // Быстро проверить ответ (без сохранения в БД)
             $isCorrect = $question->checkAnswer($selectedAnswer);
             $responseTime = $now->diffInMilliseconds($startedAt);
             
-            Log::info('Answer parsed and validated', [
-                'active_quiz_id' => $activeQuizId,
-                'user_id' => $userId,
-                'selected_answer' => $selectedAnswer,
-                'is_correct' => $isCorrect,
-                'response_time_ms' => $responseTime,
-            ]);
+            try {
+                Log::info('Answer parsed and validated', [
+                    'active_quiz_id' => $activeQuizId,
+                    'user_id' => $userId,
+                    'selected_answer' => $selectedAnswer,
+                    'is_correct' => $isCorrect,
+                    'response_time_ms' => $responseTime,
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
+
+            // ВАЖНО: Для callback query отправляем уведомление СРАЗУ с результатом
+            // Это нужно сделать ДО сохранения в БД, чтобы пользователь быстро увидел результат
+            if ($callbackQueryId) {
+                $callbackText = $isCorrect 
+                    ? "✅ Ваш ответ зарегистрирован! Правильно!"
+                    : "❌ Ваш ответ зарегистрирован. Неправильно.";
+                try {
+                    // Отправляем уведомление с результатом
+                    // Это заменяет пустой ответ, который был отправлен в контроллере
+                    // Но если уже ответили пустым, это может не сработать
+                    $this->telegram->answerCallbackQuery($callbackQueryId, $callbackText, true);
+                } catch (\Exception $e) {
+                    // Игнорируем, если уже ответили или callback истек
+                    try {
+                        Log::debug('Callback query notification failed (may already be answered)', [
+                            'callback_query_id' => $callbackQueryId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    } catch (\Exception $logError) {
+                        // Игнорируем ошибки логирования
+                    }
+                }
+            }
 
             // Сохранить результат
             $result = QuizResult::create([
@@ -737,14 +780,17 @@ class QuizService
             ]);
             
             // Логировать сохранение ответа для отладки
-            Log::info('Quiz answer saved', [
-                'active_quiz_id' => $activeQuizId,
-                'user_id' => $userId,
-                'answer' => $selectedAnswer,
-                'is_correct' => $isCorrect,
-                'result_id' => $result->id,
-            ]);
-
+            try {
+                Log::info('Quiz answer saved', [
+                    'active_quiz_id' => $activeQuizId,
+                    'user_id' => $userId,
+                    'answer' => $selectedAnswer,
+                    'is_correct' => $isCorrect,
+                    'result_id' => $result->id,
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
 
             // Если это правильный ответ и первый в викторине
             if ($isCorrect) {
@@ -768,33 +814,8 @@ class QuizService
                 }
             }
 
-            // Отправить уведомление о регистрации ответа
-            // ВАЖНО: Для callback query нужно ответить СРАЗУ после сохранения
-            if ($callbackQueryId) {
-                // Простое уведомление о том, что выбор зарегистрирован
-                $callbackText = $isCorrect 
-                    ? "✅ Ваш ответ зарегистрирован! Правильно!"
-                    : "❌ Ваш ответ зарегистрирован. Неправильно.";
-                // show_alert=true показывает всплывающее окно, которое видит только пользователь
-                try {
-                    Log::info('Sending callback query answer', [
-                        'callback_query_id' => $callbackQueryId,
-                        'text' => $callbackText,
-                        'show_alert' => true,
-                    ]);
-                    $callbackResult = $this->telegram->answerCallbackQuery($callbackQueryId, $callbackText, true);
-                    Log::info('Callback query answer sent successfully', [
-                        'callback_query_id' => $callbackQueryId,
-                        'result' => $callbackResult,
-                    ]);
-                } catch (\Exception $e) {
-                    Log::error('Failed to send callback notification', [
-                        'callback_query_id' => $callbackQueryId,
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
-                }
-            } else {
+            // Для текстовых ответов отправляем уведомление в группу
+            if (!$callbackQueryId) {
                 // Для текстовых ответов - простое уведомление, что ответ зарегистрирован
                 // В Telegram нет способа показать всплывающее уведомление для текстовых сообщений
                 // Поэтому отправляем короткое сообщение в группу

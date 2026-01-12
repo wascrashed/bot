@@ -269,12 +269,16 @@ class TelegramWebhookController extends Controller
                 ];
             }
             
-            Log::info('No active quiz found for message', [
-                'chat_id' => $chatId,
-                'has_text' => !empty($message['text'] ?? ''),
-                'now' => $now->format('Y-m-d H:i:s T'),
-                'recent_quizzes' => $quizInfo,
-            ]);
+            try {
+                Log::info('No active quiz found for message', [
+                    'chat_id' => $chatId,
+                    'has_text' => !empty($message['text'] ?? ''),
+                    'now' => $now->format('Y-m-d H:i:s T'),
+                    'recent_quizzes' => $quizInfo,
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования, чтобы не прерывать выполнение
+            }
         }
 
         if ($activeQuiz) {
@@ -407,13 +411,21 @@ class TelegramWebhookController extends Controller
             return;
         }
 
+        // ВАЖНО: НЕ отвечаем на callback query здесь!
+        // Ответ будет отправлен в QuizService после быстрой проверки ответа
+        // Это позволит показать пользователю результат сразу
+
         // Логировать обработку callback
-        Log::info('Processing callback answer', [
-            'active_quiz_id' => $activeQuiz->id,
-            'chat_id' => $chatId,
-            'user_id' => $userId,
-            'callback_data' => $data,
-        ]);
+        try {
+            Log::info('Processing callback answer', [
+                'active_quiz_id' => $activeQuiz->id,
+                'chat_id' => $chatId,
+                'user_id' => $userId,
+                'callback_data' => $data,
+            ]);
+        } catch (\Exception $logError) {
+            // Игнорируем ошибки логирования
+        }
 
         // Обработать ответ через callback
         // Передать message_id и chat_id для уведомлений
@@ -424,7 +436,7 @@ class TelegramWebhookController extends Controller
             $username,
             $firstName,
             $data, // callback_data для парсинга ответа
-            $callbackQueryId, // callback_query_id для ответа на callback
+            $callbackQueryId, // callback_query_id для ответа на callback (для уведомления с результатом)
             $messageId, // message_id для уведомлений
             $chatId // chat_id для отправки сообщений в группу
         );
