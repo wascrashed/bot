@@ -1,0 +1,100 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Question extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'question',
+        'question_type',
+        'correct_answer',
+        'wrong_answers',
+        'category',
+        'difficulty',
+        'image_url',
+        'image_file_id',
+    ];
+
+    protected $casts = [
+        'wrong_answers' => 'array',
+    ];
+
+    // Типы вопросов
+    const TYPE_MULTIPLE_CHOICE = 'multiple_choice'; // Выбор из вариантов (кнопки)
+    const TYPE_TEXT = 'text'; // Текстовый ответ
+    const TYPE_TRUE_FALSE = 'true_false'; // Верно/Неверно
+    const TYPE_IMAGE = 'image'; // С изображением
+
+    // Категории
+    const CATEGORY_HEROES = 'heroes';
+    const CATEGORY_ABILITIES = 'abilities';
+    const CATEGORY_ITEMS = 'items';
+    const CATEGORY_LORE = 'lore';
+    const CATEGORY_ESPORTS = 'esports';
+    const CATEGORY_MEMES = 'memes';
+
+    // Сложность и очки
+    const DIFFICULTY_EASY = 'easy'; // +1 очко
+    const DIFFICULTY_MEDIUM = 'medium'; // +3 очка
+    const DIFFICULTY_HARD = 'hard'; // +5 очков
+
+    /**
+     * Получить количество очков за правильный ответ в зависимости от сложности
+     */
+    public function getPointsForAnswer(): int
+    {
+        return match($this->difficulty) {
+            self::DIFFICULTY_EASY => 1,
+            self::DIFFICULTY_MEDIUM => 3,
+            self::DIFFICULTY_HARD => 5,
+            default => 3,
+        };
+    }
+
+    /**
+     * Получить все варианты ответов (правильный + неправильные) в перемешанном порядке
+     */
+    public function getShuffledAnswers(): array
+    {
+        if ($this->question_type === self::TYPE_TRUE_FALSE) {
+            return ['Верно', 'Неверно'];
+        }
+        
+        if (empty($this->wrong_answers)) {
+            return [$this->correct_answer];
+        }
+        
+        $answers = array_merge([$this->correct_answer], $this->wrong_answers);
+        shuffle($answers);
+        return $answers;
+    }
+
+    /**
+     * Проверить правильность ответа
+     */
+    public function checkAnswer(string $answer): bool
+    {
+        $answer = mb_strtolower(trim($answer));
+        $correct = mb_strtolower(trim($this->correct_answer));
+        
+        // Для вопросов типа Верно/Неверно
+        if ($this->question_type === self::TYPE_TRUE_FALSE) {
+            $answerNormalized = in_array($answer, ['верно', 'да', 'true', '1', '✓', '✅']) ? 'верно' : 'неверно';
+            $correctNormalized = in_array($correct, ['верно', 'да', 'true', '1', '✓', '✅']) ? 'верно' : 'неверно';
+            return $answerNormalized === $correctNormalized;
+        }
+        
+        // Для текстовых вопросов - частичное совпадение
+        if ($this->question_type === self::TYPE_TEXT || $this->question_type === self::TYPE_IMAGE) {
+            return mb_strpos($correct, $answer) !== false || mb_strpos($answer, $correct) !== false;
+        }
+        
+        // Точное совпадение для остальных типов
+        return $answer === $correct;
+    }
+}

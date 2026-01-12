@@ -1,0 +1,309 @@
+<?php
+
+namespace App\Services;
+
+use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
+use Carbon\Carbon;
+
+class TelegramService
+{
+    private Client $client;
+    private string $botToken;
+    private string $apiUrl;
+    
+    // Rate limiting: Telegram позволяет 30 сообщений в секунду
+    private const RATE_LIMIT_REQUESTS = 30;
+    private const RATE_LIMIT_WINDOW = 1; // секунд
+
+    public function __construct()
+    {
+        $this->botToken = config('telegram.bot_token');
+        $this->apiUrl = "https://api.telegram.org/bot{$this->botToken}";
+        $this->client = new Client([
+            'timeout' => 30,
+            'verify' => true,
+        ]);
+    }
+
+    /**
+     * Проверить и применить rate limiting
+     */
+    private function checkRateLimit(string $endpoint): void
+    {
+        $key = "telegram_rate_limit_{$endpoint}";
+        $current = Cache::get($key, 0);
+        
+        if ($current >= self::RATE_LIMIT_REQUESTS) {
+            $ttl = Cache::get("{$key}_ttl", self::RATE_LIMIT_WINDOW);
+            sleep(1); // Ждем 1 секунду
+            Cache::forget($key);
+            Cache::forget("{$key}_ttl");
+        }
+        
+        Cache::put($key, $current + 1, now()->addSeconds(self::RATE_LIMIT_WINDOW));
+        Cache::put("{$key}_ttl", self::RATE_LIMIT_WINDOW, now()->addSeconds(self::RATE_LIMIT_WINDOW));
+    }
+
+    /**
+     * Выполнить запрос к Telegram API с обработкой rate limiting
+     */
+    private function makeRequest(string $method, array $params, int $retries = 3): ?array
+    {
+        $endpoint = explode('?', parse_url($method, PHP_URL_PATH))[0];
+        $this->checkRateLimit($endpoint);
+        
+        for ($attempt = 0; $attempt < $retries; $attempt++) {
+            try {
+                $startTime = microtime(true);
+                
+                $response = $this->client->post("{$this->apiUrl}/{$method}", [
+                    'json' => $params,
+                ]);
+
+                $responseTime = (microtime(true) - $startTime) * 1000; // в мс
+                
+                if ($responseTime > 1000) {
+                    Log::warning("Slow Telegram API response", [
+                        'method' => $method,
+                        'response_time_ms' => $responseTime,
+                    ]);
+                }
+
+                $result = json_decode($response->getBody()->getContents(), true);
+                
+                if ($result['ok']) {
+                    return $result['result'];
+                }
+
+                // Обработка ошибки 429 (Too Many Requests)
+                if (isset($result['error_code']) && $result['error_code'] == 429) {
+                    $retryAfter = $result['parameters']['retry_after'] ?? (2 ** $attempt);
+                    Log::warning("Rate limit exceeded", [
+                        'method' => $method,
+                        'retry_after' => $retryAfter,
+                        'attempt' => $attempt + 1,
+                    ]);
+                    
+                    if ($attempt < $retries - 1) {
+                        sleep($retryAfter);
+                        continue;
+                    }
+                }
+
+                Log::error('Telegram API error', [
+                    'method' => $method,
+                    'response' => $result,
+                ]);
+                
+                return null;
+
+            } catch (\Exception $e) {
+                Log::error('Telegram API request error', [
+                    'method' => $method,
+                    'error' => $e->getMessage(),
+                    'attempt' => $attempt + 1,
+                ]);
+                
+                if ($attempt < $retries - 1) {
+                    sleep(2 ** $attempt); // Exponential backoff
+                }
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Отправить сообщение в чат
+     */
+    public function sendMessage(int $chatId, string $text, array $options = []): ?array
+    {
+        $params = array_merge([
+            'chat_id' => $chatId,
+            'text' => $text,
+            'parse_mode' => 'HTML',
+        ], $options);
+
+        return $this->makeRequest('sendMessage', $params);
+    }
+
+    /**
+     * Отправить изображение с подписью в чат
+     */
+    public function sendPhoto(int $chatId, string $photo, string $caption = '', array $options = []): ?array
+    {
+        $params = array_merge([
+            'chat_id' => $chatId,
+            'photo' => $photo, // URL или file_id
+            'caption' => $caption,
+            'parse_mode' => 'HTML',
+        ], $options);
+
+        return $this->makeRequest('sendPhoto', $params);
+    }
+
+    /**
+     * Отправить сообщение с inline кнопками
+     */
+    public function sendMessageWithButtons(int $chatId, string $text, array $buttons, array $options = []): ?array
+    {
+        $inlineKeyboard = [];
+        
+        foreach ($buttons as $row) {
+            $inlineKeyboard[] = array_map(function($button) {
+                return [
+                    'text' => $button['text'],
+                    'callback_data' => $button['callback_data'] ?? '',
+                ];
+            }, $row);
+        }
+
+        $params = array_merge([
+            'chat_id' => $chatId,
+            'text' => $text,
+            'parse_mode' => 'HTML',
+            'reply_markup' => [
+                'inline_keyboard' => $inlineKeyboard,
+            ],
+        ], $options);
+
+        return $this->makeRequest('sendMessage', $params);
+    }
+
+    /**
+     * Ответить на callback query (нажатие на кнопку)
+     */
+    public function answerCallbackQuery(string $callbackQueryId, ?string $text = null, bool $showAlert = false): ?array
+    {
+        $params = [
+            'callback_query_id' => $callbackQueryId,
+        ];
+
+        if ($text !== null) {
+            $params['text'] = $text;
+            $params['show_alert'] = $showAlert;
+        }
+
+        return $this->makeRequest('answerCallbackQuery', $params);
+    }
+
+    /**
+     * Редактировать сообщение с кнопками
+     */
+    public function editMessageReplyMarkup(int $chatId, int $messageId, array $buttons): ?array
+    {
+        $inlineKeyboard = [];
+        
+        foreach ($buttons as $row) {
+            $inlineKeyboard[] = array_map(function($button) {
+                return [
+                    'text' => $button['text'],
+                    'callback_data' => $button['callback_data'] ?? '',
+                ];
+            }, $row);
+        }
+
+        $params = [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'reply_markup' => [
+                'inline_keyboard' => $inlineKeyboard,
+            ],
+        ];
+
+        return $this->makeRequest('editMessageReplyMarkup', $params);
+    }
+
+    /**
+     * Редактировать сообщение
+     */
+    public function editMessageText(int $chatId, int $messageId, string $text, array $options = []): ?array
+    {
+        $params = array_merge([
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => $text,
+            'parse_mode' => 'HTML',
+        ], $options);
+
+        return $this->makeRequest('editMessageText', $params);
+    }
+
+    /**
+     * Получить информацию о члене чата
+     */
+    public function getChatMember(int $chatId, int $userId): ?array
+    {
+        $params = [
+            'chat_id' => $chatId,
+            'user_id' => $userId,
+        ];
+
+        return $this->makeRequest('getChatMember', $params);
+    }
+
+    /**
+     * Получить информацию о чате
+     */
+    public function getChat(int $chatId): ?array
+    {
+        $params = [
+            'chat_id' => $chatId,
+        ];
+
+        return $this->makeRequest('getChat', $params);
+    }
+
+    /**
+     * Проверить, является ли бот администратором чата
+     */
+    public function isBotAdmin(int $chatId): bool
+    {
+        try {
+            $botInfo = $this->getMe();
+            if (!$botInfo) {
+                return false;
+            }
+
+            $botId = $botInfo['id'];
+            $member = $this->getChatMember($chatId, $botId);
+
+            if (!$member) {
+                return false;
+            }
+
+            $status = $member['status'] ?? null;
+            return in_array($status, ['administrator', 'creator']);
+        } catch (\Exception $e) {
+            Log::error('Check bot admin error', [
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Установить вебхук
+     */
+    public function setWebhook(string $url): bool
+    {
+        $params = [
+            'url' => $url,
+            'allowed_updates' => ['message', 'callback_query'],
+        ];
+
+        $result = $this->makeRequest('setWebhook', $params);
+        return $result !== null;
+    }
+
+    /**
+     * Получить информацию о боте
+     */
+    public function getMe(): ?array
+    {
+        return $this->makeRequest('getMe', []);
+    }
+}
