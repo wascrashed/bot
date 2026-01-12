@@ -133,6 +133,15 @@ class TelegramWebhookController extends Controller
         
         // Команда /status
         if (!empty($text) && preg_match('/^\/(status|статус)(@\w+)?\s*$/i', $text)) {
+            try {
+                Log::info('🔵 /status command received in group', [
+                    'chat_id' => $chatId,
+                    'user_id' => $from['id'] ?? null,
+                    'username' => $from['username'] ?? null,
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
             $this->handleStatusCommand($chatId, $from, $chat);
             return; // Не обрабатываем дальше
         }
@@ -553,7 +562,22 @@ class TelegramWebhookController extends Controller
      */
     private function handleStatusCommand(int $chatId, ?array $from, array $chat): void
     {
+        try {
+            Log::info('🔵 handleStatusCommand called', [
+                'chat_id' => $chatId,
+                'has_from' => !empty($from),
+                'user_id' => $from['id'] ?? null,
+            ]);
+        } catch (\Exception $logError) {
+            // Игнорируем ошибки логирования
+        }
+        
         if (!$from) {
+            try {
+                Log::warning('❌ handleStatusCommand: from is null');
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
             return;
         }
 
@@ -616,17 +640,34 @@ class TelegramWebhookController extends Controller
         }
 
         try {
-            $telegramService->sendMessage(
+            Log::info('📤 Sending /status response', [
+                'chat_id' => $chatId,
+                'user_id' => $userId,
+                'has_user_score' => !empty($userScore),
+            ]);
+            
+            $result = $telegramService->sendMessage(
                 $chatId,
                 $message,
                 ['parse_mode' => 'HTML']
             );
+            
+            try {
+                Log::info('✅ /status response sent successfully', [
+                    'chat_id' => $chatId,
+                    'user_id' => $userId,
+                    'result' => $result,
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
         } catch (\Exception $e) {
             try {
-                Log::error('Failed to send status command response', [
+                Log::error('❌ Failed to send status command response', [
                     'chat_id' => $chatId,
                     'user_id' => $userId,
                     'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                 ]);
             } catch (\Exception $logError) {
                 // Игнорируем ошибки логирования
