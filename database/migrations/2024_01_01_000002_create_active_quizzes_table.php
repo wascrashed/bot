@@ -19,7 +19,7 @@ return new class extends Migration
             $table->integer('message_id')->nullable(); // ID сообщения с вопросом
             $table->json('answers_order')->nullable(); // Порядок ответов, показанных пользователю
             $table->timestamp('started_at');
-            $table->timestamp('expires_at')->nullable();            // Когда заканчивается время на ответ (started_at + 10 секунд)
+            $table->timestamp('expires_at')->nullable();            // Когда заканчивается время на ответ (started_at + 60 секунд)
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             

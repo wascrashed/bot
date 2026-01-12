@@ -74,7 +74,7 @@ class QuizService
 
             // Создать активную викторину
             $startedAt = Carbon::now();
-            $expiresAt = $startedAt->copy()->addSeconds(10); // 10 секунд на ответ
+            $expiresAt = $startedAt->copy()->addSeconds(60); // 1 минута на ответ
 
             $activeQuiz = ActiveQuiz::create([
                 'chat_id' => $chatId,
@@ -99,9 +99,9 @@ class QuizService
             if ($result && isset($result['message_id'])) {
                 $activeQuiz->update(['message_id' => $result['message_id']]);
                 
-                // Запланировать проверку результатов через 10 секунд
+                // Запланировать проверку результатов через 1 минуту
                 dispatch(new \App\Jobs\CheckQuizResults($activeQuiz->id))
-                    ->delay(now()->addSeconds(10));
+                    ->delay(now()->addSeconds(60));
 
                 // Обновить статистику чата
                 $this->updateChatStatistics($chatId, $chatType);
@@ -215,7 +215,7 @@ class QuizService
 
         $message = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
         $message .= "❓ " . $question->question . "\n\n";
-        $message .= "⏱ У вас есть <b>10 секунд</b> на ответ!\n";
+        $message .= "⏱ У вас есть <b>1 минута</b> на ответ!\n";
         $message .= "💰 За правильный ответ: <b>{$pointsText}</b>";
 
         return $this->telegram->sendMessageWithButtons($chatId, $message, $buttons);
@@ -235,7 +235,7 @@ class QuizService
 
         $message = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
         $message .= "❓ " . $question->question . "\n\n";
-        $message .= "⏱ У вас есть <b>10 секунд</b> на ответ!\n";
+        $message .= "⏱ У вас есть <b>1 минута</b> на ответ!\n";
         $message .= "💰 За правильный ответ: <b>{$pointsText}</b>";
 
         return $this->telegram->sendMessageWithButtons($chatId, $message, $buttons);
@@ -261,7 +261,7 @@ class QuizService
 
         $caption = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
         $caption .= "❓ " . $question->question . "\n\n";
-        $caption .= "⏱ У вас есть <b>10 секунд</b> на ответ!\n";
+        $caption .= "⏱ У вас есть <b>1 минута</b> на ответ!\n";
         $caption .= "💬 Напишите ваш ответ текстом\n";
         $caption .= "💰 За правильный ответ: <b>{$pointsText}</b>";
 
@@ -286,7 +286,7 @@ class QuizService
         $message = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
         $message .= "❓ " . $question->question;
         $message .= $answersText . "\n";
-        $message .= "⏱ У вас есть <b>10 секунд</b> на ответ!\n";
+        $message .= "⏱ У вас есть <b>1 минута</b> на ответ!\n";
         $message .= "💬 Напишите номер ответа (1, 2, 3...) или сам ответ\n";
         $message .= "💰 За правильный ответ: <b>{$pointsText}</b>";
 
