@@ -88,6 +88,17 @@ class TelegramWebhookController extends Controller
                     $telegramService = new \App\Services\TelegramService();
                     $telegramService->saveOwnerChatId($chat['id'], $username);
                 }
+                
+                // Если пользователь написал /chatid или /id, отправить ID чата
+                $text = trim($message['text'] ?? '');
+                if (!empty($text) && preg_match('/^\/(chatid|id|getid)(@\w+)?\s*$/i', $text)) {
+                    $telegramService = new \App\Services\TelegramService();
+                    $telegramService->sendMessage(
+                        $chat['id'],
+                        "🆔 <b>Ваш Chat ID:</b> <code>{$chat['id']}</code>\n\n💡 <i>Это ваш личный Chat ID</i>",
+                        ['parse_mode' => 'HTML']
+                    );
+                }
             }
             return; // Не обрабатываем личные сообщения дальше
         }
@@ -97,6 +108,19 @@ class TelegramWebhookController extends Controller
         }
 
         $chatId = $chat['id'];
+        
+        // Если пользователь написал /chatid или /id в группе, отправить ID чата
+        $text = trim($message['text'] ?? '');
+        if (!empty($text) && preg_match('/^\/(chatid|id|getid)(@\w+)?\s*$/i', $text)) {
+            $telegramService = new \App\Services\TelegramService();
+            $chatTitle = $chat['title'] ?? 'этой группы';
+            $telegramService->sendMessage(
+                $chatId,
+                "🆔 <b>Chat ID {$chatTitle}:</b> <code>{$chatId}</code>\n\n💡 <i>Используйте этот ID для восстановления чата в админке</i>",
+                ['parse_mode' => 'HTML']
+            );
+            return; // Не обрабатываем дальше
+        }
         
         // Обработка события добавления бота в группу
         if (isset($message['new_chat_member']) || isset($message['new_chat_members'])) {
