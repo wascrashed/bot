@@ -40,6 +40,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
         Route::get('/chats/{chatId}', [ChatController::class, 'show'])->name('chats.show');
         Route::post('/chats/{chatId}/toggle-active', [ChatController::class, 'toggleActive'])->name('chats.toggle-active');
+        Route::post('/chats/{chatId}/check-status', [ChatController::class, 'checkBotStatus'])->name('chats.check-status');
         Route::post('/chats/{chatId}/restore', [ChatController::class, 'restore'])->name('chats.restore');
         Route::delete('/chats/{chatId}', [ChatController::class, 'destroy'])->name('chats.destroy');
 

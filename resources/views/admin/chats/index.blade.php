@@ -7,6 +7,11 @@
 <div class="card">
     <div class="card-header">
         <h2>Список чатов</h2>
+        <div class="mt-2">
+            <a href="{{ route('admin.chats.index', ['show_all' => !$showAll]) }}" class="btn btn-{{ $showAll ? 'primary' : 'secondary' }}">
+                {{ $showAll ? 'Показать только активные чаты' : 'Показать все чаты' }}
+            </a>
+        </div>
     </div>
 
     @if($chats->count() > 0)
@@ -45,6 +50,10 @@
                     </td>
                     <td>
                         <a href="{{ route('admin.chats.show', $chat->chat_id) }}" class="btn btn-primary" style="padding: 5px 10px; font-size: 12px;">Просмотр</a>
+                        <form action="{{ route('admin.chats.check-status', $chat->chat_id) }}" method="POST" style="display: inline;">
+                            @csrf
+                            <button type="submit" class="btn btn-info" style="padding: 5px 10px; font-size: 12px;" title="Проверить через Telegram API">🔍 Проверить</button>
+                        </form>
                         <form action="{{ route('admin.chats.toggle-active', $chat->chat_id) }}" method="POST" style="display: inline;">
                             @csrf
                             <button type="submit" class="btn btn-{{ $chat->is_active ? 'warning' : 'success' }}" style="padding: 5px 10px; font-size: 12px;">

@@ -411,6 +411,47 @@ class TelegramService
     }
 
     /**
+     * Проверить, является ли бот членом чата
+     */
+    public function isBotMember(int $chatId): bool
+    {
+        try {
+            $botInfo = $this->getMe();
+            if (!$botInfo) {
+                return false;
+            }
+
+            $botId = $botInfo['id'];
+            $member = $this->getChatMember($chatId, $botId);
+
+            if (!$member) {
+                return false;
+            }
+
+            $status = $member['status'] ?? null;
+            // Бот является членом, если статус не "left" или "kicked"
+            return !in_array($status, ['left', 'kicked']);
+        } catch (\Exception $e) {
+            // Если ошибка "chat not found" или "bot is not a member", значит бот не в чате
+            $errorMessage = $e->getMessage();
+            if (
+                stripos($errorMessage, 'chat not found') !== false ||
+                stripos($errorMessage, 'bot is not a member') !== false ||
+                stripos($errorMessage, 'bot was kicked') !== false ||
+                stripos($errorMessage, 'bot was blocked') !== false
+            ) {
+                return false;
+            }
+            
+            Log::error('Check bot member error', [
+                'chat_id' => $chatId,
+                'error' => $errorMessage,
+            ]);
+            return false;
+        }
+    }
+
+    /**
      * Проверить, является ли бот администратором чата
      */
     public function isBotAdmin(int $chatId): bool

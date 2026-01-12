@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ChatStatistics;
 use App\Models\UserScore;
+use App\Services\TelegramService;
 use Illuminate\Http\Request;
 
 class ChatController extends Controller
@@ -12,10 +13,21 @@ class ChatController extends Controller
     /**
      * Display a listing of chats
      */
-    public function index()
+    public function index(Request $request)
     {
-        $chats = ChatStatistics::orderBy('last_quiz_at', 'desc')->paginate(20);
-        return view('admin.chats.index', compact('chats'));
+        // По умолчанию показываем только чаты, где бот присутствует (is_active = true)
+        $showAll = $request->get('show_all', false);
+        
+        $query = ChatStatistics::query();
+        
+        if (!$showAll) {
+            // Показывать только чаты, где бот активен
+            $query->where('is_active', true);
+        }
+        
+        $chats = $query->orderBy('last_quiz_at', 'desc')->paginate(20);
+        
+        return view('admin.chats.index', compact('chats', 'showAll'));
     }
 
     /**
@@ -39,10 +51,46 @@ class ChatController extends Controller
     public function toggleActive($chatId)
     {
         $chat = ChatStatistics::where('chat_id', $chatId)->firstOrFail();
+        
+        // Если активируем чат, проверить через API, действительно ли бот в чате
+        if (!$chat->is_active) {
+            $telegramService = new \App\Services\TelegramService();
+            $isMember = $telegramService->isBotMember($chatId);
+            
+            if (!$isMember) {
+                return back()->with('error', 'Бот не является членом этого чата. Добавьте бота в группу, чтобы активировать чат.');
+            }
+        }
+        
         $chat->is_active = !$chat->is_active;
         $chat->save();
 
         return back()->with('success', 'Статус чата обновлен.');
+    }
+    
+    /**
+     * Проверить статус бота в чате через Telegram API
+     */
+    public function checkBotStatus($chatId)
+    {
+        try {
+            $chat = ChatStatistics::where('chat_id', $chatId)->firstOrFail();
+            $telegramService = new \App\Services\TelegramService();
+            
+            $isMember = $telegramService->isBotMember($chatId);
+            
+            // Обновить статус в базе данных
+            $chat->is_active = $isMember;
+            $chat->save();
+            
+            if ($isMember) {
+                return back()->with('success', 'Бот присутствует в чате. Статус обновлен.');
+            } else {
+                return back()->with('warning', 'Бот не найден в чате. Чат деактивирован.');
+            }
+        } catch (\Exception $e) {
+            return back()->with('error', 'Ошибка при проверке статуса: ' . $e->getMessage());
+        }
     }
 
     /**
