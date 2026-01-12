@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\ActiveQuiz;
+use App\Models\ChatStatistics;
 use App\Services\QuizService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -31,27 +32,34 @@ class StartRandomQuiz extends Command
         $this->info('Starting random quiz...');
 
         try {
-            // Получить список уникальных чатов с активными викторинами или недавно проводившимися
-            // Для простоты, можно использовать список известных чатов или получать из базы
-            
-            // Альтернативный подход: получать чаты из активных викторин за последние 24 часа
-            $recentChats = ActiveQuiz::where('started_at', '>=', now()->subDay())
-                ->select('chat_id', 'chat_type')
-                ->distinct()
+            // Получить список всех чатов из ChatStatistics (не только с is_active = true)
+            // Это чаты, где бот был добавлен
+            $activeChats = ChatStatistics::select('chat_id', 'chat_type')
                 ->get();
 
-            if ($recentChats->isEmpty()) {
-                $this->warn('No active chats found. Bot should be added to groups first.');
-                $this->info('To start quizzes, add bot to a group and send any message to it.');
-                return Command::SUCCESS;
+            // Если нет чатов в статистике, попробуем найти чаты с викторинами за последние 24 часа
+            if ($activeChats->isEmpty()) {
+                $recentChats = ActiveQuiz::where('started_at', '>=', now()->subDay())
+                    ->select('chat_id', 'chat_type')
+                    ->distinct()
+                    ->get();
+                
+                if ($recentChats->isEmpty()) {
+                    $this->warn('No active chats found. Bot should be added to groups first.');
+                    $this->info('To start quizzes, add bot to a group and send any message to it.');
+                    return Command::SUCCESS;
+                }
+                $activeChats = $recentChats;
             }
+            
+            $this->info("Found {$activeChats->count()} chat(s) to process");
 
             $successCount = 0;
 
             // Оптимизация для работы с 50+ чатами: обработка батчами с задержкой
-            if ($recentChats->count() > 50) {
-                $this->info("Processing {$recentChats->count()} chats in batches to respect rate limits...");
-                foreach ($recentChats->chunk(10) as $chunkIndex => $chunk) {
+            if ($activeChats->count() > 50) {
+                $this->info("Processing {$activeChats->count()} chats in batches to respect rate limits...");
+                foreach ($activeChats->chunk(10) as $chunkIndex => $chunk) {
                     foreach ($chunk as $chat) {
                         try {
                             if ($quizService->startQuiz($chat->chat_id, $chat->chat_type)) {
@@ -69,12 +77,12 @@ class StartRandomQuiz extends Command
                         }
                     }
                     // Задержка между батчами для соблюдения rate limits (кроме последнего батча)
-                    if (($chunkIndex + 1) * 10 < $recentChats->count()) {
+                    if (($chunkIndex + 1) * 10 < $activeChats->count()) {
                         usleep(500000); // 0.5 секунды
                     }
                 }
             } else {
-                foreach ($recentChats as $chat) {
+                foreach ($activeChats as $chat) {
                     try {
                         if ($quizService->startQuiz($chat->chat_id, $chat->chat_type)) {
                             $successCount++;

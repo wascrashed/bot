@@ -63,6 +63,30 @@ class TelegramWebhookController extends Controller
         }
 
         $chatId = $chat['id'];
+        
+        // Обработка события добавления бота в группу
+        if (isset($message['new_chat_member']) || isset($message['new_chat_members'])) {
+            $newMembers = $message['new_chat_members'] ?? [$message['new_chat_member']];
+            $telegramService = new \App\Services\TelegramService();
+            $botInfo = $telegramService->getMe();
+            
+            if ($botInfo) {
+                $botId = $botInfo['id'];
+                foreach ($newMembers as $member) {
+                    if (isset($member['id']) && $member['id'] == $botId) {
+                        // Бот добавлен в группу - зарегистрировать чат
+                        \App\Models\ChatStatistics::getOrCreate($chatId, $chatType, $chat['title'] ?? null);
+                        Log::info("Bot added to chat", [
+                            'chat_id' => $chatId,
+                            'chat_type' => $chatType,
+                            'chat_title' => $chat['title'] ?? null,
+                        ]);
+                        return;
+                    }
+                }
+            }
+        }
+        
         $from = $message['from'] ?? null;
         
         // Игнорировать сообщения от ботов
