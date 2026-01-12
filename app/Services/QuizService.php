@@ -554,6 +554,30 @@ class QuizService
                 return;
             }
 
+            // Прочитать сырые значения из БД для точной проверки времени
+            $rawData = DB::table('active_quizzes')
+                ->where('id', $activeQuizId)
+                ->first(['started_at', 'expires_at', 'is_active']);
+            
+            $startedAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->started_at, 'UTC');
+            $expiresAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->expires_at, 'UTC');
+            $now = Carbon::now('UTC');
+            
+            // Обновить объект для дальнейшего использования
+            $activeQuiz->started_at = $startedAt;
+            $activeQuiz->expires_at = $expiresAt;
+            $activeQuiz->is_active = (bool)$rawData->is_active;
+
+            Log::info('Checking quiz status for answer', [
+                'active_quiz_id' => $activeQuizId,
+                'is_active' => $activeQuiz->is_active,
+                'started_at' => $startedAt->format('Y-m-d H:i:s T'),
+                'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
+                'now' => $now->format('Y-m-d H:i:s T'),
+                'is_expired' => $expiresAt->isPast(),
+                'time_remaining_seconds' => max(0, $now->diffInSeconds($expiresAt, false)),
+            ]);
+
             if (!$activeQuiz->is_active) {
                 Log::warning('ActiveQuiz is not active', [
                     'active_quiz_id' => $activeQuizId,
@@ -565,11 +589,13 @@ class QuizService
                 return;
             }
 
-            if ($activeQuiz->isExpired()) {
+            // Проверить истечение времени с использованием UTC
+            if ($expiresAt->isPast()) {
                 Log::warning('ActiveQuiz expired', [
                     'active_quiz_id' => $activeQuizId,
-                    'expires_at' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
-                    'now' => now()->format('Y-m-d H:i:s'),
+                    'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
+                    'now' => $now->format('Y-m-d H:i:s T'),
+                    'time_diff_seconds' => $now->diffInSeconds($expiresAt),
                 ]);
                 if ($callbackQueryId) {
                     $this->telegram->answerCallbackQuery($callbackQueryId, 'Время на ответ истекло!', false);
@@ -619,7 +645,15 @@ class QuizService
             }
 
             $isCorrect = $question->checkAnswer($selectedAnswer);
-            $responseTime = Carbon::now()->diffInMilliseconds($activeQuiz->started_at);
+            $responseTime = $now->diffInMilliseconds($startedAt);
+            
+            Log::info('Answer parsed and validated', [
+                'active_quiz_id' => $activeQuizId,
+                'user_id' => $userId,
+                'selected_answer' => $selectedAnswer,
+                'is_correct' => $isCorrect,
+                'response_time_ms' => $responseTime,
+            ]);
 
             // Сохранить результат
             $result = QuizResult::create([
@@ -736,7 +770,7 @@ class QuizService
             } elseif (in_array($answerText, ['неверно', 'нет', 'false', '0', 'нет', '✗', '❌'])) {
                 return 'Неверно';
             }
-            Log::debug('True/False answer not recognized', [
+            Log::info('True/False answer not recognized', [
                 'answer_text' => $originalAnswerText,
                 'lowercase' => $answerText,
             ]);
@@ -757,7 +791,7 @@ class QuizService
         }
         
         // Логировать для диагностики
-        Log::debug('Parsing text answer', [
+        Log::info('Parsing text answer', [
             'active_quiz_id' => $activeQuiz->id,
             'question_type' => $question->question_type,
             'answer_text' => $originalAnswerText,
@@ -770,14 +804,14 @@ class QuizService
         if (is_numeric($answerText)) {
             $index = (int) $answerText - 1;
             if ($index >= 0 && $index < count($answers)) {
-                Log::debug('Answer found by number', [
+                Log::info('Answer found by number', [
                     'number' => $answerText,
                     'index' => $index,
                     'selected_answer' => $answers[$index],
                 ]);
                 return $answers[$index];
             } else {
-                Log::debug('Answer number out of range', [
+                Log::info('Answer number out of range', [
                     'number' => $answerText,
                     'index' => $index,
                     'answers_count' => count($answers),
@@ -788,7 +822,7 @@ class QuizService
         // Попытка найти по тексту (точное совпадение)
         foreach ($answers as $answer) {
             if (mb_strtolower(trim($answer)) === $answerText) {
-                Log::debug('Answer found by exact match', [
+                Log::info('Answer found by exact match', [
                     'user_answer' => $answerText,
                     'matched_answer' => $answer,
                 ]);
@@ -799,7 +833,7 @@ class QuizService
         // Попытка найти по частичному совпадению
         foreach ($answers as $answer) {
             if (mb_strpos(mb_strtolower($answer), $answerText) !== false) {
-                Log::debug('Answer found by partial match', [
+                Log::info('Answer found by partial match', [
                     'user_answer' => $answerText,
                     'matched_answer' => $answer,
                 ]);
@@ -811,13 +845,13 @@ class QuizService
         if ($question->question_type === Question::TYPE_TEXT || $question->question_type === Question::TYPE_IMAGE) {
             // Вернуть оригинальный текст ответа пользователя (до преобразования в нижний регистр)
             // checkAnswer сам сделает нормализацию для сравнения
-            Log::debug('Returning original text for TEXT/IMAGE question', [
+            Log::info('Returning original text for TEXT/IMAGE question', [
                 'answer_text' => $originalAnswerText,
             ]);
             return $originalAnswerText;
         }
 
-        Log::debug('Answer not recognized', [
+        Log::info('Answer not recognized', [
             'answer_text' => $originalAnswerText,
             'question_type' => $question->question_type,
             'answers' => $answers,
