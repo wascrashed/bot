@@ -62,11 +62,11 @@
     <div class="card-body">
         <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <div style="display: flex; gap: 5px; border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
-                <a href="{{ route('admin.logs.index', ['type' => 'laravel', 'lines' => $lines, 'level' => $level]) }}" 
+                <a href="{{ route('admin.logs.index', ['type' => 'laravel', 'lines' => $lines, 'level' => $level, 'search' => $search]) }}" 
                    style="padding: 8px 16px; text-decoration: none; background: {{ $logType === 'laravel' ? '#007bff' : '#f8f9fa' }}; color: {{ $logType === 'laravel' ? 'white' : '#333' }}; border-right: 1px solid #ddd;">
                     📝 Laravel Logs
                 </a>
-                <a href="{{ route('admin.logs.index', ['type' => 'cron', 'lines' => $lines, 'level' => $level]) }}" 
+                <a href="{{ route('admin.logs.index', ['type' => 'cron', 'lines' => $lines, 'search' => $search]) }}" 
                    style="padding: 8px 16px; text-decoration: none; background: {{ $logType === 'cron' ? '#007bff' : '#f8f9fa' }}; color: {{ $logType === 'cron' ? 'white' : '#333' }};">
                     ⏰ Cron Logs
                 </a>
@@ -97,6 +97,13 @@
                 </select>
             </div>
             @endif
+            <div>
+                <label for="search" style="display: block; margin-bottom: 5px; font-weight: bold;">Поиск:</label>
+                <input type="text" name="search" id="search" class="form-control" 
+                       value="{{ request('search', '') }}" 
+                       placeholder="Ключевые слова..." 
+                       style="width: 300px;">
+            </div>
             <div style="align-self: flex-end;">
                 <button type="submit" class="btn btn-primary" style="padding: 8px 20px;">🔍 Применить фильтры</button>
             </div>

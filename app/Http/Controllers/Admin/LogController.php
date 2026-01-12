@@ -20,6 +20,7 @@ class LogController extends Controller
             : storage_path('logs/laravel.log');
         $lines = $request->input('lines', 200); // По умолчанию последние 200 строк
         $level = $request->input('level', 'all'); // Фильтр по уровню: all, error, warning, info
+        $search = $request->input('search', ''); // Поиск по тексту
         
         $logs = [];
         $cronStatus = null;
@@ -37,12 +38,15 @@ class LogController extends Controller
                 while (!$file->eof()) {
                     $line = trim($file->current());
                     if (!empty($line)) {
-                        $logs[] = [
-                            'timestamp' => $this->extractCronTimestamp($line),
-                            'level' => $this->extractCronLevel($line),
-                            'message' => $line,
-                            'full' => $line,
-                        ];
+                        // Фильтр по поиску
+                        if (empty($search) || stripos($line, $search) !== false) {
+                            $logs[] = [
+                                'timestamp' => $this->extractCronTimestamp($line),
+                                'level' => $this->extractCronLevel($line),
+                                'message' => $line,
+                                'full' => $line,
+                            ];
+                        }
                     }
                     $file->next();
                 }
@@ -98,7 +102,10 @@ class LogController extends Controller
                 
                 // Добавляем последнюю запись
                 if ($currentLog !== null && $this->shouldIncludeLog($currentLog, $level)) {
-                    $logs[] = $currentLog;
+                    // Фильтр по поиску
+                    if (empty($search) || stripos($currentLog['full'], $search) !== false) {
+                        $logs[] = $currentLog;
+                    }
                 }
                 
                 // Реверс, чтобы последние логи были первыми
@@ -109,7 +116,7 @@ class LogController extends Controller
         $logSize = File::exists($logFile) ? File::size($logFile) : 0;
         $logSizeFormatted = $this->formatBytes($logSize);
         
-        return view('admin.logs.index', compact('logs', 'lines', 'level', 'logSizeFormatted', 'logType', 'cronStatus'));
+        return view('admin.logs.index', compact('logs', 'lines', 'level', 'logSizeFormatted', 'logType', 'cronStatus', 'search'));
     }
     
     /**
