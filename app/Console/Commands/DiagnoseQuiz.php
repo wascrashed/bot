@@ -76,7 +76,7 @@ class DiagnoseQuiz extends Command
         
         // 3. Проверить последние ответы
         $this->info("\n3. ПОСЛЕДНИЕ 10 ОТВЕТОВ:");
-        $lastResults = QuizResult::latest()->take(10)->get();
+        $lastResults = QuizResult::with('activeQuiz')->latest()->take(10)->get();
         if ($lastResults->isEmpty()) {
             $this->warn("   ⚠️ Ответов не найдено");
         } else {
@@ -84,7 +84,8 @@ class DiagnoseQuiz extends Command
                 $userName = $result->first_name ?? $result->username ?? "ID:{$result->user_id}";
                 $timeAgo = $result->created_at->diffForHumans();
                 $correct = $result->is_correct ? '✅' : '❌';
-                $this->line("   {$correct} {$userName}: '{$result->answer}' ({$timeAgo})");
+                $answerText = $result->activeQuiz ? $result->getAnswerText() : $result->answer;
+                $this->line("   {$correct} {$userName}: '{$answerText}' ({$timeAgo})");
             }
         }
         

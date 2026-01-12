@@ -30,7 +30,7 @@
 
         <div class="form-group">
             <label class="form-label" for="correct_answer">Правильный ответ *</label>
-            <input type="text" id="correct_answer" name="correct_answer" class="form-control" value="{{ old('correct_answer', $question->correct_answer) }}" required>
+            <input type="text" id="correct_answer" name="correct_answer" class="form-control" value="{{ old('correct_answer', $question->correct_answer_text ?? $question->correct_answer) }}" required>
         </div>
 
         <div class="form-group" id="wrong-answers-group">

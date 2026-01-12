@@ -12,7 +12,8 @@ class Question extends Model
     protected $fillable = [
         'question',
         'question_type',
-        'correct_answer',
+        'correct_answer', // Индекс правильного ответа (0, 1, 2...)
+        'correct_answer_text', // Текст правильного ответа
         'wrong_answers',
         'category',
         'difficulty',
@@ -57,19 +58,50 @@ class Question extends Model
     }
 
     /**
-     * Получить все варианты ответов (правильный + неправильные) в перемешанном порядке
+     * Получить текст правильного ответа
      */
-    public function getShuffledAnswers(): array
+    public function getCorrectAnswerText(): string
+    {
+        // Если есть correct_answer_text - используем его
+        if (!empty($this->correct_answer_text)) {
+            return $this->correct_answer_text;
+        }
+        
+        // Fallback для старых данных - correct_answer может быть текстом
+        if (!is_numeric($this->correct_answer)) {
+            return $this->correct_answer;
+        }
+        
+        // Если correct_answer - это индекс, получаем из массива ответов
+        $allAnswers = $this->getAllAnswers();
+        $index = (int)$this->correct_answer;
+        return $allAnswers[$index] ?? '';
+    }
+    
+    /**
+     * Получить все варианты ответов (правильный + неправильные) БЕЗ перемешивания
+     */
+    public function getAllAnswers(): array
     {
         if ($this->question_type === self::TYPE_TRUE_FALSE) {
             return ['Верно', 'Неверно'];
         }
         
+        $correctText = $this->getCorrectAnswerText();
+        
         if (empty($this->wrong_answers)) {
-            return [$this->correct_answer];
+            return [$correctText];
         }
         
-        $answers = array_merge([$this->correct_answer], $this->wrong_answers);
+        return array_merge([$correctText], $this->wrong_answers);
+    }
+
+    /**
+     * Получить все варианты ответов (правильный + неправильные) в перемешанном порядке
+     */
+    public function getShuffledAnswers(): array
+    {
+        $answers = $this->getAllAnswers();
         shuffle($answers);
         return $answers;
     }
@@ -80,7 +112,8 @@ class Question extends Model
     public function checkAnswer(string $answer): bool
     {
         $answer = mb_strtolower(trim($answer));
-        $correct = mb_strtolower(trim($this->correct_answer));
+        $correctText = $this->getCorrectAnswerText();
+        $correct = mb_strtolower(trim($correctText));
         
         // Для вопросов типа Верно/Неверно
         if ($this->question_type === self::TYPE_TRUE_FALSE) {

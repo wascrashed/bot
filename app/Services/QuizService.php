@@ -144,17 +144,22 @@ class QuizService
             if (!empty($answersOrder) && in_array($question->question_type, [Question::TYPE_MULTIPLE_CHOICE, Question::TYPE_TRUE_FALSE])) {
                 if ($question->question_type === Question::TYPE_TRUE_FALSE) {
                     // Для Верно/Неверно: Верно = 0, Неверно = 1
-                    $correctAnswerLower = mb_strtolower(trim($question->correct_answer));
-                    if (in_array($correctAnswerLower, ['верно', 'да', 'true', '1', '✓', '✅'])) {
-                        $correctAnswerIndex = 0; // Верно
-                    } else {
-                        $correctAnswerIndex = 1; // Неверно
+                    // correct_answer хранит индекс: 0 = Верно, 1 = Неверно
+                    $correctAnswerIndex = (int)$question->correct_answer;
+                    // Но нужно найти этот ответ в перемешанном массиве
+                    $correctText = $question->getCorrectAnswerText();
+                    foreach ($answersOrder as $index => $answer) {
+                        if (mb_strtolower(trim($answer)) === mb_strtolower(trim($correctText))) {
+                            $correctAnswerIndex = $index;
+                            break;
+                        }
                     }
                 } else {
-                    // Для вопросов с выбором - найти индекс в перемешанном массиве
-                    $correctAnswerLower = mb_strtolower(trim($question->correct_answer));
+                    // Для вопросов с выбором - correct_answer это индекс в исходном массиве
+                    // Нужно найти текст правильного ответа и его индекс в перемешанном массиве
+                    $correctText = $question->getCorrectAnswerText();
                     foreach ($answersOrder as $index => $answer) {
-                        if (mb_strtolower(trim($answer)) === $correctAnswerLower) {
+                        if (mb_strtolower(trim($answer)) === mb_strtolower(trim($correctText))) {
                             $correctAnswerIndex = $index;
                             break;
                         }
@@ -170,7 +175,8 @@ class QuizService
                 'answers_order' => $answersOrder,
                 'answers_count' => count($answersOrder),
                 'correct_answer_index' => $correctAnswerIndex,
-                'correct_answer' => $question->correct_answer,
+                'correct_answer_text' => $question->getCorrectAnswerText(),
+                'correct_answer_index_in_question' => (int)$question->correct_answer,
                 'started_at_raw' => $startedAt->format('Y-m-d H:i:s'),
                 'expires_at_raw' => $expiresAt->format('Y-m-d H:i:s'),
                 'timezone' => $startedAt->timezone->getName(),
@@ -571,6 +577,16 @@ class QuizService
         
         try {
             $activeQuiz = ActiveQuiz::with('question')->find($activeQuizId);
+            
+            // Обновить correct_answer_index из БД, если он не загружен
+            if ($activeQuiz && $activeQuiz->correct_answer_index === null) {
+                $rawData = DB::table('active_quizzes')
+                    ->where('id', $activeQuizId)
+                    ->first(['correct_answer_index']);
+                if ($rawData && $rawData->correct_answer_index !== null) {
+                    $activeQuiz->correct_answer_index = $rawData->correct_answer_index;
+                }
+            }
 
             if (!$activeQuiz) {
                 Log::warning('ActiveQuiz not found', ['active_quiz_id' => $activeQuizId]);
@@ -771,11 +787,39 @@ class QuizService
 
             // Быстро проверить ответ по индексу (для вопросов с выбором) или по тексту
             $isCorrect = false;
-            if (in_array($question->question_type, [Question::TYPE_MULTIPLE_CHOICE, Question::TYPE_TRUE_FALSE]) && 
-                $selectedAnswerIndex !== null && 
-                $activeQuiz->correct_answer_index !== null) {
-                // Сравниваем по индексу - это быстрее и точнее
-                $isCorrect = ($selectedAnswerIndex === $activeQuiz->correct_answer_index);
+            
+            // Для вопросов с выбором используем сравнение по индексу
+            if (in_array($question->question_type, [Question::TYPE_MULTIPLE_CHOICE, Question::TYPE_TRUE_FALSE])) {
+                // Если есть индекс правильного ответа - сравниваем по индексу
+                if ($selectedAnswerIndex !== null && $activeQuiz->correct_answer_index !== null) {
+                    $isCorrect = ($selectedAnswerIndex === $activeQuiz->correct_answer_index);
+                    
+                    try {
+                        Log::info('Answer check by index', [
+                            'selected_index' => $selectedAnswerIndex,
+                            'correct_index' => $activeQuiz->correct_answer_index,
+                            'is_correct' => $isCorrect,
+                            'type' => 'index_comparison',
+                        ]);
+                    } catch (\Exception $logError) {
+                        // Игнорируем ошибки логирования
+                    }
+                } else {
+                    // Fallback на текстовое сравнение для старых викторин без correct_answer_index
+                    $isCorrect = $question->checkAnswer($selectedAnswer);
+                    
+                    try {
+                        Log::warning('Using text comparison fallback', [
+                            'selected_answer' => $selectedAnswer,
+                            'selected_index' => $selectedAnswerIndex,
+                            'correct_answer_index' => $activeQuiz->correct_answer_index,
+                            'is_correct' => $isCorrect,
+                            'type' => 'text_fallback',
+                        ]);
+                    } catch (\Exception $logError) {
+                        // Игнорируем ошибки логирования
+                    }
+                }
             } else {
                 // Для текстовых вопросов сравниваем по тексту
                 $isCorrect = $question->checkAnswer($selectedAnswer);
@@ -823,12 +867,20 @@ class QuizService
             }
 
             // Сохранить результат (после отправки уведомления для ускорения)
+            // Для вопросов с выбором сохраняем индекс, для текстовых - текст
+            $answerToSave = $selectedAnswer;
+            if (in_array($question->question_type, [Question::TYPE_MULTIPLE_CHOICE, Question::TYPE_TRUE_FALSE]) && 
+                $selectedAnswerIndex !== null) {
+                // Сохраняем индекс ответа вместо текста
+                $answerToSave = (string)$selectedAnswerIndex;
+            }
+            
             $result = QuizResult::create([
                 'active_quiz_id' => $activeQuizId,
                 'user_id' => $userId,
                 'username' => $username,
                 'first_name' => $firstName,
-                'answer' => $selectedAnswer,
+                'answer' => $answerToSave,
                 'is_correct' => $isCorrect,
                 'response_time_ms' => $responseTime,
             ]);
@@ -838,7 +890,9 @@ class QuizService
                 Log::info('Quiz answer saved', [
                     'active_quiz_id' => $activeQuizId,
                     'user_id' => $userId,
-                    'answer' => $selectedAnswer,
+                    'answer_saved' => $answerToSave,
+                    'answer_text' => $selectedAnswer,
+                    'answer_index' => $selectedAnswerIndex,
                     'is_correct' => $isCorrect,
                     'result_id' => $result->id,
                 ]);
@@ -1110,8 +1164,8 @@ class QuizService
 
             $question = $activeQuiz->question;
             
-            // Перезагрузить результаты из БД, чтобы убедиться, что все сохранены
-            $results = QuizResult::where('active_quiz_id', $activeQuizId)->get();
+            // Перезагрузить результаты из БД с загрузкой activeQuiz для получения answers_order
+            $results = QuizResult::with('activeQuiz')->where('active_quiz_id', $activeQuizId)->get();
             
             // Логировать количество найденных результатов
             Log::info('Finishing quiz', [
@@ -1122,6 +1176,7 @@ class QuizService
                     return [
                         'user_id' => $r->user_id,
                         'answer' => $r->answer,
+                        'answer_text' => $r->getAnswerText(),
                         'is_correct' => $r->is_correct,
                     ];
                 })->toArray(),
@@ -1136,7 +1191,7 @@ class QuizService
 
             // Сформировать сообщение с результатами
             $message = "<b>⏱ Время вышло!</b>\n\n";
-            $message .= "<b>Правильный ответ:</b> " . $question->correct_answer . "\n\n";
+            $message .= "<b>Правильный ответ:</b> " . $question->getCorrectAnswerText() . "\n\n";
 
             if ($totalAnswers > 0) {
                 $message .= "📊 <b>Статистика:</b>\n";

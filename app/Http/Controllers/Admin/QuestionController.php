@@ -54,7 +54,7 @@ class QuestionController extends Controller
         $validated = $request->validate([
             'question' => 'required|string',
             'question_type' => 'required|in:multiple_choice,text,true_false,image',
-            'correct_answer' => 'required|string',
+            'correct_answer' => 'required|string', // Это будет текст, сохраним в correct_answer_text
             'wrong_answers' => 'nullable|array',
             'wrong_answers.*' => 'string',
             'category' => 'required|in:heroes,abilities,items,lore,esports,memes',
@@ -65,6 +65,23 @@ class QuestionController extends Controller
         ]);
 
         $validated['wrong_answers'] = $validated['wrong_answers'] ?? [];
+        
+        // Сохранить текст правильного ответа в correct_answer_text
+        // correct_answer будет индексом (0 для multiple_choice, 0 или 1 для true_false)
+        $correctAnswerText = $validated['correct_answer'];
+        unset($validated['correct_answer']);
+        
+        // Определить индекс правильного ответа
+        if ($validated['question_type'] === 'true_false') {
+            // Для Верно/Неверно: Верно = 0, Неверно = 1
+            $correctAnswerIndex = (in_array(mb_strtolower(trim($correctAnswerText)), ['верно', 'да', 'true', '1', '✓', '✅'])) ? 0 : 1;
+        } else {
+            // Для остальных типов правильный ответ всегда первый в массиве [correct, wrong1, wrong2, ...]
+            $correctAnswerIndex = 0;
+        }
+        
+        $validated['correct_answer'] = (string)$correctAnswerIndex;
+        $validated['correct_answer_text'] = $correctAnswerText;
 
         // Обработка загрузки файла изображения
         if ($request->hasFile('image_file')) {
@@ -136,7 +153,7 @@ class QuestionController extends Controller
         $validated = $request->validate([
             'question' => 'required|string',
             'question_type' => 'required|in:multiple_choice,text,true_false,image',
-            'correct_answer' => 'required|string',
+            'correct_answer' => 'required|string', // Это будет текст, сохраним в correct_answer_text
             'wrong_answers' => 'nullable|array',
             'wrong_answers.*' => 'string',
             'category' => 'required|in:heroes,abilities,items,lore,esports,memes',
@@ -148,6 +165,23 @@ class QuestionController extends Controller
         ]);
 
         $validated['wrong_answers'] = $validated['wrong_answers'] ?? [];
+        
+        // Сохранить текст правильного ответа в correct_answer_text
+        // correct_answer будет индексом (0 для multiple_choice, 0 или 1 для true_false)
+        $correctAnswerText = $validated['correct_answer'];
+        unset($validated['correct_answer']);
+        
+        // Определить индекс правильного ответа
+        if ($validated['question_type'] === 'true_false') {
+            // Для Верно/Неверно: Верно = 0, Неверно = 1
+            $correctAnswerIndex = (in_array(mb_strtolower(trim($correctAnswerText)), ['верно', 'да', 'true', '1', '✓', '✅'])) ? 0 : 1;
+        } else {
+            // Для остальных типов правильный ответ всегда первый в массиве [correct, wrong1, wrong2, ...]
+            $correctAnswerIndex = 0;
+        }
+        
+        $validated['correct_answer'] = (string)$correctAnswerIndex;
+        $validated['correct_answer_text'] = $correctAnswerText;
 
         // Удаление изображения
         if ($request->has('remove_image') && $request->remove_image) {

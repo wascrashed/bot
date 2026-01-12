@@ -65,14 +65,15 @@ class TestWebhook extends Command
         
         // 3. Проверить последние ответы
         $this->info("\n3. Последние 10 ответов:");
-        $lastResults = QuizResult::latest()->take(10)->get();
+        $lastResults = QuizResult::with('activeQuiz')->latest()->take(10)->get();
         if ($lastResults->isEmpty()) {
             $this->warn("   ⚠️ Ответов не найдено");
         } else {
             foreach ($lastResults as $result) {
                 $userName = $result->first_name ?? $result->username ?? "ID:{$result->user_id}";
                 $timeAgo = $result->created_at->diffForHumans();
-                $this->line("   {$userName}: '{$result->answer}' ({$timeAgo})");
+                $answerText = $result->activeQuiz ? $result->getAnswerText() : $result->answer;
+                $this->line("   {$userName}: '{$answerText}' ({$timeAgo})");
             }
         }
         

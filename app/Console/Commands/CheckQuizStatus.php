@@ -70,7 +70,8 @@ class CheckQuizStatus extends Command
                     $userName = $result->first_name ?? $result->username ?? "ID:{$result->user_id}";
                     $correct = $result->is_correct ? '✅' : '❌';
                     $time = number_format($result->response_time_ms / 1000, 2);
-                    $this->line("      {$correct} {$userName}: '{$result->answer}' ({$time} сек.)");
+                    $answerText = $result->activeQuiz ? $result->getAnswerText() : $result->answer;
+                    $this->line("      {$correct} {$userName}: '{$answerText}' ({$time} сек.)");
                 }
             } else {
                 $this->warn("   ⚠️ Ответов не найдено в БД!");

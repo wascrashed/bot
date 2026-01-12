@@ -175,6 +175,23 @@ class Dota2QuestionsSeeder extends Seeder
             $questionData['difficulty'] = $questionData['difficulty'] ?? Question::DIFFICULTY_MEDIUM;
             $questionData['wrong_answers'] = $questionData['wrong_answers'] ?? [];
             
+            // Сохранить текст правильного ответа в correct_answer_text
+            // correct_answer будет индексом (0 для multiple_choice, 0 или 1 для true_false)
+            $correctAnswerText = $questionData['correct_answer'];
+            unset($questionData['correct_answer']);
+            
+            // Определить индекс правильного ответа
+            if ($questionData['question_type'] === Question::TYPE_TRUE_FALSE) {
+                // Для Верно/Неверно: Верно = 0, Неверно = 1
+                $correctAnswerIndex = (in_array(mb_strtolower(trim($correctAnswerText)), ['верно', 'да', 'true', '1', '✓', '✅'])) ? 0 : 1;
+            } else {
+                // Для остальных типов правильный ответ всегда первый в массиве [correct, wrong1, wrong2, ...]
+                $correctAnswerIndex = 0;
+            }
+            
+            $questionData['correct_answer'] = (string)$correctAnswerIndex;
+            $questionData['correct_answer_text'] = $correctAnswerText;
+            
             Question::create($questionData);
         }
 
