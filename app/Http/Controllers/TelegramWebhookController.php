@@ -367,15 +367,38 @@ class TelegramWebhookController extends Controller
         $firstName = $from['first_name'] ?? '';
 
         // Проверить, есть ли активная викторина в этом чате
-        $activeQuiz = ActiveQuiz::where('chat_id', $chatId)
+        // Используем ту же логику поиска, что и для текстовых сообщений
+        $activeQuizzes = ActiveQuiz::where('chat_id', $chatId)
             ->where('is_active', true)
-            ->where('expires_at', '>', now())
-            ->first();
+            ->get();
+        
+        $activeQuiz = null;
+        $now = Carbon::now('UTC');
+        
+        foreach ($activeQuizzes as $quiz) {
+            // Прочитать сырые значения из БД напрямую для точности
+            $rawData = DB::table('active_quizzes')
+                ->where('id', $quiz->id)
+                ->first(['started_at', 'expires_at']);
+            
+            $startedAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->started_at, 'UTC');
+            $expiresAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->expires_at, 'UTC');
+            
+            // Проверить, что викторина еще не истекла
+            $isNotExpired = $expiresAt->greaterThanOrEqualTo($now);
+            
+            if ($isNotExpired) {
+                $quiz->started_at = $startedAt;
+                $quiz->expires_at = $expiresAt;
+                $activeQuiz = $quiz;
+                break;
+            }
+        }
 
         if (!$activeQuiz) {
             // Отвечаем на callback, что викторина уже завершена
             $telegram = new \App\Services\TelegramService();
-            $telegram->answerCallbackQuery($callbackQueryId, 'Время на ответ истекло!', false);
+            $telegram->answerCallbackQuery($callbackQueryId, '⏰ Время на ответ истекло! Ваш ответ не зарегистрирован.', true);
             Log::warning('Callback query for inactive quiz', [
                 'chat_id' => $chatId,
                 'user_id' => $userId,

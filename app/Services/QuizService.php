@@ -550,10 +550,23 @@ class QuizService
                 Log::warning('ActiveQuiz not found', ['active_quiz_id' => $activeQuizId]);
                 $errorMessage = '❌ Викторина уже завершена. Ваш ответ не зарегистрирован.';
                 if ($callbackQueryId) {
-                    $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
+                    // Уже ответили выше, но отправляем уведомление об ошибке
+                    try {
+                        $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
+                    } catch (\Exception $e) {
+                        Log::debug('Callback query already answered', ['error' => $e->getMessage()]);
+                    }
+                } elseif ($chatId) {
+                    try {
+                        $this->telegram->sendMessage(
+                            $chatId,
+                            $errorMessage,
+                            ['parse_mode' => 'HTML']
+                        );
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to send error notification', ['error' => $e->getMessage()]);
+                    }
                 }
-                // Для текстовых ответов chat_id нужно получить из другого источника
-                // Пока просто логируем, так как без activeQuiz нет chat_id
                 return;
             }
 
@@ -755,14 +768,32 @@ class QuizService
                 }
             }
 
-            // Ответить на callback, если был (это показывается только пользователю, который нажал кнопку)
+            // Отправить уведомление о регистрации ответа
+            // ВАЖНО: Для callback query нужно ответить СРАЗУ после сохранения
             if ($callbackQueryId) {
                 // Простое уведомление о том, что выбор зарегистрирован
                 $callbackText = $isCorrect 
                     ? "✅ Ваш ответ зарегистрирован! Правильно!"
                     : "❌ Ваш ответ зарегистрирован. Неправильно.";
                 // show_alert=true показывает всплывающее окно, которое видит только пользователь
-                $this->telegram->answerCallbackQuery($callbackQueryId, $callbackText, true);
+                try {
+                    Log::info('Sending callback query answer', [
+                        'callback_query_id' => $callbackQueryId,
+                        'text' => $callbackText,
+                        'show_alert' => true,
+                    ]);
+                    $callbackResult = $this->telegram->answerCallbackQuery($callbackQueryId, $callbackText, true);
+                    Log::info('Callback query answer sent successfully', [
+                        'callback_query_id' => $callbackQueryId,
+                        'result' => $callbackResult,
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Failed to send callback notification', [
+                        'callback_query_id' => $callbackQueryId,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                }
             } else {
                 // Для текстовых ответов - простое уведомление, что ответ зарегистрирован
                 // В Telegram нет способа показать всплывающее уведомление для текстовых сообщений
@@ -805,7 +836,7 @@ class QuizService
             try {
                 if ($callbackQueryId) {
                     $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
-                } elseif ($chatId) {
+                } elseif (isset($chatId) && $chatId) {
                     $this->telegram->sendMessage(
                         $chatId,
                         $errorMessage,
