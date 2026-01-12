@@ -24,7 +24,21 @@ class TelegramWebhookController extends Controller
         try {
             $update = $request->all();
 
-            Log::debug('Telegram webhook received', ['update' => $update]);
+            // Логировать только важные события, чтобы не засорять логи
+            if (isset($update['message']) || isset($update['callback_query'])) {
+                $chatId = null;
+                if (isset($update['message']['chat']['id'])) {
+                    $chatId = $update['message']['chat']['id'];
+                } elseif (isset($update['callback_query']['message']['chat']['id'])) {
+                    $chatId = $update['callback_query']['message']['chat']['id'];
+                }
+                
+                Log::info('Telegram webhook received', [
+                    'has_message' => isset($update['message']),
+                    'has_callback' => isset($update['callback_query']),
+                    'chat_id' => $chatId,
+                ]);
+            }
 
             // Обработка callback_query (нажатия на кнопки)
             if (isset($update['callback_query'])) {
@@ -126,14 +140,6 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        // Сохранить информацию о чате, создав запись ActiveQuiz, если её еще нет
-        // Это позволит команде quiz:start-random находить активные чаты
-        // Создадим "фиктивную" запись, если нет активной викторины, чтобы пометить чат как активный
-        $activeQuiz = ActiveQuiz::where('chat_id', $chatId)
-            ->where('is_active', true)
-            ->where('expires_at', '>', now())
-            ->first();
-
         // Логировать все сообщения из групп для диагностики
         Log::info('Message received in group', [
             'chat_id' => $chatId,
@@ -142,10 +148,27 @@ class TelegramWebhookController extends Controller
             'text' => $message['text'] ?? null,
         ]);
 
+        // Найти активную викторину для этого чата
         $activeQuiz = ActiveQuiz::where('chat_id', $chatId)
             ->where('is_active', true)
             ->where('expires_at', '>', now())
             ->first();
+        
+        // Логировать результат поиска викторины
+        if ($activeQuiz) {
+            Log::info('Active quiz found for message', [
+                'active_quiz_id' => $activeQuiz->id,
+                'chat_id' => $chatId,
+                'started_at' => $activeQuiz->started_at->format('Y-m-d H:i:s'),
+                'expires_at' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
+                'now' => now()->format('Y-m-d H:i:s'),
+            ]);
+        } else {
+            Log::debug('No active quiz found for message', [
+                'chat_id' => $chatId,
+                'has_text' => !empty($message['text'] ?? ''),
+            ]);
+        }
 
         if ($activeQuiz) {
             // Есть активная викторина - обработать ответ

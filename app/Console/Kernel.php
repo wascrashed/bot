@@ -31,6 +31,11 @@ class Kernel extends ConsoleKernel
                 \App\Models\QuestionHistory::where('asked_at', '<', now()->subHours(48))->delete();
             })
             ->hourly();
+        
+        // Завершать зависшие викторины (каждую минуту)
+        $schedule->command('quiz:finish-stuck')
+            ->everyMinute()
+            ->withoutOverlapping();
     }
 
     /**

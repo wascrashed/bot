@@ -111,15 +111,32 @@ class QuizService
             // Создать активную викторину
             $startedAt = Carbon::now();
             $expiresAt = $startedAt->copy()->addSeconds(20); // 20 секунд на ответ
+            $answersOrder = $this->prepareAnswersForQuestion($question);
+
+            // Логировать создание викторины
+            Log::info('Creating active quiz', [
+                'chat_id' => $chatId,
+                'question_id' => $question->id,
+                'question_type' => $question->question_type,
+                'answers_order' => $answersOrder,
+                'answers_count' => count($answersOrder),
+            ]);
 
             $activeQuiz = ActiveQuiz::create([
                 'chat_id' => $chatId,
                 'chat_type' => $chatType,
                 'question_id' => $question->id,
-                'answers_order' => $this->prepareAnswersForQuestion($question),
+                'answers_order' => $answersOrder,
                 'started_at' => $startedAt,
                 'expires_at' => $expiresAt,
                 'is_active' => true,
+            ]);
+            
+            // Проверить, что answers_order сохранился
+            $activeQuiz->refresh();
+            Log::info('Active quiz created', [
+                'active_quiz_id' => $activeQuiz->id,
+                'saved_answers_order' => $activeQuiz->answers_order,
             ]);
 
             // Сохранить историю вопроса
@@ -620,23 +637,62 @@ class QuizService
             } elseif (in_array($answerText, ['неверно', 'нет', 'false', '0', 'нет', '✗', '❌'])) {
                 return 'Неверно';
             }
+            Log::debug('True/False answer not recognized', [
+                'answer_text' => $originalAnswerText,
+                'lowercase' => $answerText,
+            ]);
             return null;
         }
 
         // Для вопросов с вариантами ответов
-        $answers = $activeQuiz->answers_order ?? $question->getShuffledAnswers();
+        // ВАЖНО: использовать сохраненный порядок из ActiveQuiz, а не генерировать новый!
+        $answers = $activeQuiz->answers_order;
+        
+        // Если answers_order пустой или null, попробовать получить из вопроса
+        if (empty($answers)) {
+            Log::warning('answers_order is empty, using question shuffled answers', [
+                'active_quiz_id' => $activeQuiz->id,
+                'question_id' => $question->id,
+            ]);
+            $answers = $question->getShuffledAnswers();
+        }
+        
+        // Логировать для диагностики
+        Log::debug('Parsing text answer', [
+            'active_quiz_id' => $activeQuiz->id,
+            'question_type' => $question->question_type,
+            'answer_text' => $originalAnswerText,
+            'answers_count' => count($answers),
+            'answers' => $answers,
+            'answers_order_from_db' => $activeQuiz->answers_order,
+        ]);
         
         // Попытка найти по номеру (1, 2, 3...)
         if (is_numeric($answerText)) {
             $index = (int) $answerText - 1;
             if ($index >= 0 && $index < count($answers)) {
+                Log::debug('Answer found by number', [
+                    'number' => $answerText,
+                    'index' => $index,
+                    'selected_answer' => $answers[$index],
+                ]);
                 return $answers[$index];
+            } else {
+                Log::debug('Answer number out of range', [
+                    'number' => $answerText,
+                    'index' => $index,
+                    'answers_count' => count($answers),
+                ]);
             }
         }
 
         // Попытка найти по тексту (точное совпадение)
         foreach ($answers as $answer) {
             if (mb_strtolower(trim($answer)) === $answerText) {
+                Log::debug('Answer found by exact match', [
+                    'user_answer' => $answerText,
+                    'matched_answer' => $answer,
+                ]);
                 return $answer;
             }
         }
@@ -644,6 +700,10 @@ class QuizService
         // Попытка найти по частичному совпадению
         foreach ($answers as $answer) {
             if (mb_strpos(mb_strtolower($answer), $answerText) !== false) {
+                Log::debug('Answer found by partial match', [
+                    'user_answer' => $answerText,
+                    'matched_answer' => $answer,
+                ]);
                 return $answer;
             }
         }
@@ -652,9 +712,17 @@ class QuizService
         if ($question->question_type === Question::TYPE_TEXT || $question->question_type === Question::TYPE_IMAGE) {
             // Вернуть оригинальный текст ответа пользователя (до преобразования в нижний регистр)
             // checkAnswer сам сделает нормализацию для сравнения
+            Log::debug('Returning original text for TEXT/IMAGE question', [
+                'answer_text' => $originalAnswerText,
+            ]);
             return $originalAnswerText;
         }
 
+        Log::debug('Answer not recognized', [
+            'answer_text' => $originalAnswerText,
+            'question_type' => $question->question_type,
+            'answers' => $answers,
+        ]);
         return null;
     }
 
