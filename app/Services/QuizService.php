@@ -37,7 +37,18 @@ class QuizService
             if (!$this->telegram->isBotAdmin($chatId)) {
                 Log::warning("Bot is not admin in chat {$chatId}");
                 $this->analytics->logError("Bot not admin in chat {$chatId}");
-                $this->sendErrorNotification($chatId, "⚠️ Не удалось запустить викторину: бот не является администратором группы. Пожалуйста, предоставьте боту права администратора.");
+                
+                // Получить информацию о чате для детального сообщения
+                $chatInfo = $this->telegram->getChat($chatId);
+                $chatTitle = $chatInfo['title'] ?? "группа";
+                
+                $errorMessage = "⚠️ <b>Не удалось запустить викторину</b>\n\n";
+                $errorMessage .= "📊 <b>Группа:</b> {$chatTitle}\n";
+                $errorMessage .= "🆔 <b>ID:</b> {$chatId}\n\n";
+                $errorMessage .= "❌ <b>Причина:</b> Бот не является администратором группы\n\n";
+                $errorMessage .= "💡 <b>Решение:</b> Пожалуйста, предоставьте боту права администратора, чтобы викторины могли запускаться автоматически.";
+                
+                $this->sendErrorNotification($chatId, $errorMessage);
                 return false;
             }
 
@@ -48,6 +59,17 @@ class QuizService
 
             if ($existingQuiz && !$existingQuiz->isExpired()) {
                 Log::info("Quiz already active in chat {$chatId}");
+                
+                // Отправить уведомление в группу, что викторина уже активна
+                $chatInfo = $this->telegram->getChat($chatId);
+                $chatTitle = $chatInfo['title'] ?? "группа";
+                
+                $errorMessage = "ℹ️ <b>Викторина уже активна</b>\n\n";
+                $errorMessage .= "📊 <b>Группа:</b> {$chatTitle}\n";
+                $errorMessage .= "🆔 <b>ID:</b> {$chatId}\n\n";
+                $errorMessage .= "⏱ В группе уже идет активная викторина. Дождитесь её завершения.";
+                
+                $this->sendErrorNotification($chatId, $errorMessage);
                 return false;
             }
 
@@ -70,7 +92,18 @@ class QuizService
             if (!$question) {
                 Log::warning("No questions found in database");
                 $this->analytics->logError("No questions in database");
-                $this->sendErrorNotification($chatId, "⚠️ Не удалось запустить викторину: в базе данных нет вопросов. Обратитесь к администратору.");
+                
+                // Получить информацию о чате для детального сообщения
+                $chatInfo = $this->telegram->getChat($chatId);
+                $chatTitle = $chatInfo['title'] ?? "группа";
+                
+                $errorMessage = "⚠️ <b>Не удалось запустить викторину</b>\n\n";
+                $errorMessage .= "📊 <b>Группа:</b> {$chatTitle}\n";
+                $errorMessage .= "🆔 <b>ID:</b> {$chatId}\n\n";
+                $errorMessage .= "❌ <b>Причина:</b> В базе данных нет вопросов\n\n";
+                $errorMessage .= "💡 <b>Решение:</b> Обратитесь к администратору бота для добавления вопросов.";
+                
+                $this->sendErrorNotification($chatId, $errorMessage);
                 $this->notifyOwnerAboutError($chatId, "Нет вопросов в базе", "В базе данных отсутствуют вопросы для викторины");
                 return false;
             }
@@ -126,7 +159,18 @@ class QuizService
             // Если не удалось отправить, деактивировать викторину
             $activeQuiz->update(['is_active' => false]);
             $this->analytics->logError("Failed to send quiz in chat {$chatId}");
-            $this->sendErrorNotification($chatId, "⚠️ Не удалось запустить викторину: ошибка при отправке сообщения. Попробуйте позже.");
+            
+            // Получить информацию о чате для детального сообщения
+            $chatInfo = $this->telegram->getChat($chatId);
+            $chatTitle = $chatInfo['title'] ?? "группа";
+            
+            $errorMessage = "⚠️ <b>Не удалось запустить викторину</b>\n\n";
+            $errorMessage .= "📊 <b>Группа:</b> {$chatTitle}\n";
+            $errorMessage .= "🆔 <b>ID:</b> {$chatId}\n\n";
+            $errorMessage .= "❌ <b>Причина:</b> Ошибка при отправке сообщения\n\n";
+            $errorMessage .= "💡 <b>Решение:</b> Попробуйте позже или обратитесь к администратору бота.";
+            
+            $this->sendErrorNotification($chatId, $errorMessage);
             $this->notifyOwnerAboutError($chatId, "Ошибка отправки", "Не удалось отправить сообщение с викториной в группу");
             return false;
 
@@ -137,7 +181,22 @@ class QuizService
                 'trace' => $e->getTraceAsString(),
             ]);
             $this->analytics->logError("Start quiz error: " . $e->getMessage());
-            $this->sendErrorNotification($chatId, "⚠️ Не удалось запустить викторину: произошла ошибка. Попробуйте позже.");
+            
+            // Получить информацию о чате для детального сообщения
+            try {
+                $chatInfo = $this->telegram->getChat($chatId);
+                $chatTitle = $chatInfo['title'] ?? "группа";
+            } catch (\Exception $chatError) {
+                $chatTitle = "группа";
+            }
+            
+            $errorMessage = "⚠️ <b>Не удалось запустить викторину</b>\n\n";
+            $errorMessage .= "📊 <b>Группа:</b> {$chatTitle}\n";
+            $errorMessage .= "🆔 <b>ID:</b> {$chatId}\n\n";
+            $errorMessage .= "❌ <b>Причина:</b> Произошла техническая ошибка\n\n";
+            $errorMessage .= "💡 <b>Решение:</b> Попробуйте позже или обратитесь к администратору бота.";
+            
+            $this->sendErrorNotification($chatId, $errorMessage);
             $this->notifyOwnerAboutError($chatId, "Исключение", $e->getMessage());
             return false;
         }

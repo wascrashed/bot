@@ -198,9 +198,31 @@ function startQuiz() {
         resultDiv.style.display = 'block';
         
         if (data.success) {
+            let errorHtml = '';
+            if (data.errors && data.errors.length > 0) {
+                errorHtml = '<div style="margin-top: 15px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">' +
+                    '<strong style="color: #856404;">⚠️ Детали ошибок:</strong><ul style="margin: 10px 0; padding-left: 20px; color: #856404;">';
+                
+                if (data.errors_detailed && data.errors_detailed.length > 0) {
+                    // Использовать детальную информацию
+                    data.errors_detailed.forEach(function(error) {
+                        errorHtml += '<li style="margin-bottom: 8px;"><strong>' + 
+                            (error.chat_title || 'Chat ' + error.chat_id) + '</strong> (ID: ' + error.chat_id + ')<br>' +
+                            '<small style="color: #856404;">Причина: ' + (error.reason || error.message || 'Неизвестная ошибка') + '</small></li>';
+                    });
+                } else {
+                    // Fallback на простые сообщения
+                    data.errors.forEach(function(error) {
+                        errorHtml += '<li style="margin-bottom: 5px;">' + error + '</li>';
+                    });
+                }
+                
+                errorHtml += '</ul></div>';
+            }
+            
             resultDiv.innerHTML = '<div style="padding: 10px; background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; color: #155724;">' +
                 '<strong>✅ Успешно!</strong><br>' + data.message +
-                (data.errors && data.errors.length > 0 ? '<br><small style="color: #856404;">Ошибки: ' + data.errors.join(', ') + '</small>' : '') +
+                errorHtml +
                 '</div>';
             
             // Закрыть модальное окно через 3 секунды

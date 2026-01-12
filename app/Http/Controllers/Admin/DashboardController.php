@@ -96,28 +96,60 @@ class DashboardController extends Controller
             
             foreach ($chats as $chat) {
                 try {
+                    // Получить информацию о чате для детальных ошибок
+                    $chatInfo = null;
+                    try {
+                        $telegramService = new \App\Services\TelegramService();
+                        $chatInfo = $telegramService->getChat($chat->chat_id);
+                    } catch (\Exception $e) {
+                        // Игнорируем ошибку получения информации о чате
+                    }
+                    
+                    $chatTitle = $chatInfo['title'] ?? $chat->chat_title ?? "Chat {$chat->chat_id}";
+                    
                     if ($quizService->startQuiz($chat->chat_id, $chat->chat_type)) {
                         $successCount++;
                     } else {
                         $failedCount++;
-                        $errors[] = "Не удалось запустить в чате {$chat->chat_id}";
+                        // Попытаться определить причину ошибки
+                        $errorReason = $this->getQuizStartErrorReason($chat->chat_id, $telegramService ?? new \App\Services\TelegramService());
+                        $errors[] = [
+                            'chat_id' => $chat->chat_id,
+                            'chat_title' => $chatTitle,
+                            'reason' => $errorReason,
+                            'message' => "Не удалось запустить в чате \"{$chatTitle}\" (ID: {$chat->chat_id}): {$errorReason}"
+                        ];
                     }
                 } catch (\Exception $e) {
                     $failedCount++;
-                    $errors[] = "Ошибка в чате {$chat->chat_id}: " . $e->getMessage();
+                    $chatTitle = $chat->chat_title ?? "Chat {$chat->chat_id}";
+                    $errors[] = [
+                        'chat_id' => $chat->chat_id,
+                        'chat_title' => $chatTitle,
+                        'reason' => $e->getMessage(),
+                        'message' => "Ошибка в чате \"{$chatTitle}\" (ID: {$chat->chat_id}): " . $e->getMessage()
+                    ];
                     Log::error('Start quiz error from admin', [
                         'chat_id' => $chat->chat_id,
+                        'chat_title' => $chatTitle,
                         'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
                     ]);
                 }
             }
+            
+            // Форматировать ошибки для отображения
+            $errorMessages = array_map(function($error) {
+                return is_array($error) ? $error['message'] : $error;
+            }, $errors);
             
             return response()->json([
                 'success' => true,
                 'message' => "Викторина запущена в {$successCount} чат(ах)" . ($failedCount > 0 ? ", ошибок: {$failedCount}" : ''),
                 'success_count' => $successCount,
                 'failed_count' => $failedCount,
-                'errors' => $errors
+                'errors' => $errorMessages,
+                'errors_detailed' => $errors // Детальная информация об ошибках
             ]);
             
         } catch (\Exception $e) {
@@ -130,5 +162,34 @@ class DashboardController extends Controller
                 'message' => 'Ошибка при запуске викторины: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Определить причину ошибки запуска викторины
+     */
+    private function getQuizStartErrorReason(int $chatId, \App\Services\TelegramService $telegramService): string
+    {
+        // Проверить права администратора
+        if (!$telegramService->isBotAdmin($chatId)) {
+            return "Бот не является администратором группы";
+        }
+        
+        // Проверить, есть ли активная викторина
+        $activeQuiz = \App\Models\ActiveQuiz::where('chat_id', $chatId)
+            ->where('is_active', true)
+            ->where('expires_at', '>', now())
+            ->first();
+        
+        if ($activeQuiz) {
+            return "В чате уже есть активная викторина";
+        }
+        
+        // Проверить наличие вопросов
+        $questionCount = \App\Models\Question::count();
+        if ($questionCount === 0) {
+            return "В базе данных нет вопросов";
+        }
+        
+        return "Неизвестная ошибка";
     }
 }
