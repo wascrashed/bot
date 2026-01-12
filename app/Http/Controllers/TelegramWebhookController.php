@@ -134,6 +134,19 @@ class TelegramWebhookController extends Controller
             ->where('expires_at', '>', now())
             ->first();
 
+        // Логировать все сообщения из групп для диагностики
+        Log::info('Message received in group', [
+            'chat_id' => $chatId,
+            'chat_type' => $chatType,
+            'has_text' => !empty($message['text'] ?? ''),
+            'text' => $message['text'] ?? null,
+        ]);
+
+        $activeQuiz = ActiveQuiz::where('chat_id', $chatId)
+            ->where('is_active', true)
+            ->where('expires_at', '>', now())
+            ->first();
+
         if ($activeQuiz) {
             // Есть активная викторина - обработать ответ
             $text = $message['text'] ?? '';
@@ -148,18 +161,42 @@ class TelegramWebhookController extends Controller
                     'chat_id' => $chatId,
                     'user_id' => $userId,
                     'answer_text' => $text,
+                    'quiz_started_at' => $activeQuiz->started_at->format('Y-m-d H:i:s'),
+                    'quiz_expires_at' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
                 ]);
 
-                $this->quizService->processAnswer(
-                    $activeQuiz->id,
-                    $userId,
-                    $username,
-                    $firstName,
-                    $text
-                );
+                try {
+                    $this->quizService->processAnswer(
+                        $activeQuiz->id,
+                        $userId,
+                        $username,
+                        $firstName,
+                        $text
+                    );
+                    Log::info('Answer processed successfully', [
+                        'active_quiz_id' => $activeQuiz->id,
+                        'user_id' => $userId,
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Error processing answer', [
+                        'active_quiz_id' => $activeQuiz->id,
+                        'user_id' => $userId,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                }
+            } else {
+                Log::debug('Message has no text, skipping', [
+                    'chat_id' => $chatId,
+                    'message_keys' => array_keys($message),
+                ]);
             }
         } else {
             // Нет активной викторины - обновить статистику чата для отслеживания
+            Log::debug('No active quiz found for message', [
+                'chat_id' => $chatId,
+                'has_text' => !empty($message['text'] ?? ''),
+            ]);
             \App\Models\ChatStatistics::getOrCreate($chatId, $chatType, $chat['title'] ?? null);
         }
     }

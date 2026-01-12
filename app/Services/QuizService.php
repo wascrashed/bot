@@ -420,10 +420,29 @@ class QuizService
      */
     private function processAnswerInternal(int $activeQuizId, int $userId, string $username, string $firstName, string $answerText, ?string $callbackData = null, ?string $callbackQueryId = null): void
     {
+        Log::info('processAnswerInternal called', [
+            'active_quiz_id' => $activeQuizId,
+            'user_id' => $userId,
+            'answer_text' => $answerText,
+            'callback_data' => $callbackData,
+        ]);
+        
         try {
             $activeQuiz = ActiveQuiz::with('question')->find($activeQuizId);
 
-            if (!$activeQuiz || !$activeQuiz->is_active) {
+            if (!$activeQuiz) {
+                Log::warning('ActiveQuiz not found', ['active_quiz_id' => $activeQuizId]);
+                if ($callbackQueryId) {
+                    $this->telegram->answerCallbackQuery($callbackQueryId, 'Викторина уже завершена', false);
+                }
+                return;
+            }
+
+            if (!$activeQuiz->is_active) {
+                Log::warning('ActiveQuiz is not active', [
+                    'active_quiz_id' => $activeQuizId,
+                    'is_active' => $activeQuiz->is_active,
+                ]);
                 if ($callbackQueryId) {
                     $this->telegram->answerCallbackQuery($callbackQueryId, 'Викторина уже завершена', false);
                 }
@@ -431,6 +450,11 @@ class QuizService
             }
 
             if ($activeQuiz->isExpired()) {
+                Log::warning('ActiveQuiz expired', [
+                    'active_quiz_id' => $activeQuizId,
+                    'expires_at' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
+                    'now' => now()->format('Y-m-d H:i:s'),
+                ]);
                 if ($callbackQueryId) {
                     $this->telegram->answerCallbackQuery($callbackQueryId, 'Время на ответ истекло!', false);
                 }
