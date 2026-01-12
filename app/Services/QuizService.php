@@ -138,6 +138,29 @@ class QuizService
                 $expiresAt = $startedAt->copy()->addSeconds(20);
             }
             $answersOrder = $this->prepareAnswersForQuestion($question);
+            
+            // Найти индекс правильного ответа в перемешанном массиве
+            $correctAnswerIndex = null;
+            if (!empty($answersOrder) && in_array($question->question_type, [Question::TYPE_MULTIPLE_CHOICE, Question::TYPE_TRUE_FALSE])) {
+                if ($question->question_type === Question::TYPE_TRUE_FALSE) {
+                    // Для Верно/Неверно: Верно = 0, Неверно = 1
+                    $correctAnswerLower = mb_strtolower(trim($question->correct_answer));
+                    if (in_array($correctAnswerLower, ['верно', 'да', 'true', '1', '✓', '✅'])) {
+                        $correctAnswerIndex = 0; // Верно
+                    } else {
+                        $correctAnswerIndex = 1; // Неверно
+                    }
+                } else {
+                    // Для вопросов с выбором - найти индекс в перемешанном массиве
+                    $correctAnswerLower = mb_strtolower(trim($question->correct_answer));
+                    foreach ($answersOrder as $index => $answer) {
+                        if (mb_strtolower(trim($answer)) === $correctAnswerLower) {
+                            $correctAnswerIndex = $index;
+                            break;
+                        }
+                    }
+                }
+            }
 
             // Логировать создание викторины с временем
             Log::info('Creating active quiz', [
@@ -146,6 +169,8 @@ class QuizService
                 'question_type' => $question->question_type,
                 'answers_order' => $answersOrder,
                 'answers_count' => count($answersOrder),
+                'correct_answer_index' => $correctAnswerIndex,
+                'correct_answer' => $question->correct_answer,
                 'started_at_raw' => $startedAt->format('Y-m-d H:i:s'),
                 'expires_at_raw' => $expiresAt->format('Y-m-d H:i:s'),
                 'timezone' => $startedAt->timezone->getName(),
@@ -157,6 +182,7 @@ class QuizService
                 'chat_type' => $chatType,
                 'question_id' => $question->id,
                 'answers_order' => $answersOrder,
+                'correct_answer_index' => $correctAnswerIndex,
                 // Явно форматировать время в UTC для сохранения в БД
                 'started_at' => $startedAt->format('Y-m-d H:i:s'),
                 'expires_at' => $expiresAt->format('Y-m-d H:i:s'),
@@ -678,13 +704,30 @@ class QuizService
             $question = $activeQuiz->question;
             $answerText = trim($answerText);
 
-            // Определить выбранный ответ
+            // Определить выбранный ответ и индекс (для вопросов с выбором)
+            $selectedAnswer = null;
+            $selectedAnswerIndex = null;
+            
             if ($callbackData) {
-                // Ответ через кнопку
-                $selectedAnswer = $this->parseCallbackAnswer($callbackData, $question, $activeQuiz);
+                // Ответ через кнопку - получаем индекс напрямую
+                $parsed = $this->parseCallbackAnswer($callbackData, $question, $activeQuiz);
+                if ($parsed !== null) {
+                    $selectedAnswerIndex = $parsed['index'];
+                    $selectedAnswer = $parsed['answer'];
+                }
             } else {
                 // Текстовый ответ
                 $selectedAnswer = $this->parseTextAnswer($answerText, $question, $activeQuiz);
+                // Для текстовых ответов находим индекс, если это вопрос с выбором
+                if ($selectedAnswer && in_array($question->question_type, [Question::TYPE_MULTIPLE_CHOICE, Question::TYPE_TRUE_FALSE])) {
+                    $answers = $activeQuiz->answers_order ?? [];
+                    foreach ($answers as $index => $answer) {
+                        if (mb_strtolower(trim($answer)) === mb_strtolower(trim($selectedAnswer))) {
+                            $selectedAnswerIndex = $index;
+                            break;
+                        }
+                    }
+                }
             }
 
             if (!$selectedAnswer) {
@@ -703,8 +746,6 @@ class QuizService
                 
                 $errorMessage = '❌ Не удалось распознать ваш ответ. Ваш ответ не зарегистрирован.';
                 if ($callbackQueryId) {
-                    // Для callback query уже ответили пустым, но можем попробовать отправить ошибку
-                    // (хотя это может не сработать, если уже ответили)
                     try {
                         $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
                     } catch (\Exception $e) {
@@ -728,8 +769,18 @@ class QuizService
                 return;
             }
 
-            // Быстро проверить ответ (без сохранения в БД)
-            $isCorrect = $question->checkAnswer($selectedAnswer);
+            // Быстро проверить ответ по индексу (для вопросов с выбором) или по тексту
+            $isCorrect = false;
+            if (in_array($question->question_type, [Question::TYPE_MULTIPLE_CHOICE, Question::TYPE_TRUE_FALSE]) && 
+                $selectedAnswerIndex !== null && 
+                $activeQuiz->correct_answer_index !== null) {
+                // Сравниваем по индексу - это быстрее и точнее
+                $isCorrect = ($selectedAnswerIndex === $activeQuiz->correct_answer_index);
+            } else {
+                // Для текстовых вопросов сравниваем по тексту
+                $isCorrect = $question->checkAnswer($selectedAnswer);
+            }
+            
             $responseTime = $now->diffInMilliseconds($startedAt);
             
             try {
@@ -737,8 +788,11 @@ class QuizService
                     'active_quiz_id' => $activeQuizId,
                     'user_id' => $userId,
                     'selected_answer' => $selectedAnswer,
+                    'selected_answer_index' => $selectedAnswerIndex,
+                    'correct_answer_index' => $activeQuiz->correct_answer_index,
                     'is_correct' => $isCorrect,
                     'response_time_ms' => $responseTime,
+                    'comparison_method' => ($selectedAnswerIndex !== null && $activeQuiz->correct_answer_index !== null) ? 'by_index' : 'by_text',
                 ]);
             } catch (\Exception $logError) {
                 // Игнорируем ошибки логирования
@@ -746,6 +800,7 @@ class QuizService
 
             // ВАЖНО: Для callback query отправляем уведомление СРАЗУ с результатом
             // Это нужно сделать ДО сохранения в БД, чтобы убрать индикатор загрузки и показать результат
+            // Это ускоряет отклик для пользователя
             if ($callbackQueryId) {
                 $callbackText = $isCorrect 
                     ? "✅ Ваш ответ зарегистрирован! Правильно!"
@@ -767,7 +822,7 @@ class QuizService
                 }
             }
 
-            // Сохранить результат
+            // Сохранить результат (после отправки уведомления для ускорения)
             $result = QuizResult::create([
                 'active_quiz_id' => $activeQuizId,
                 'user_id' => $userId,
@@ -873,8 +928,9 @@ class QuizService
 
     /**
      * Распознать ответ из callback_data
+     * Возвращает массив с 'index' и 'answer' или null
      */
-    private function parseCallbackAnswer(string $callbackData, Question $question, ActiveQuiz $activeQuiz): ?string
+    private function parseCallbackAnswer(string $callbackData, Question $question, ActiveQuiz $activeQuiz): ?array
     {
         // Формат: quiz_answer_{question_id}_{answer_index} или quiz_answer_{question_id}_{true/false}
         if (preg_match('/quiz_answer_(\d+)_(.+)/', $callbackData, $matches)) {
@@ -888,10 +944,11 @@ class QuizService
             
             if ($question->question_type === Question::TYPE_TRUE_FALSE) {
                 // Для вопросов Верно/Неверно
+                $answers = ['Верно', 'Неверно'];
                 if ($answerPart === 'true') {
-                    return 'Верно';
+                    return ['index' => 0, 'answer' => 'Верно'];
                 } elseif ($answerPart === 'false') {
-                    return 'Неверно';
+                    return ['index' => 1, 'answer' => 'Неверно'];
                 }
             } else {
                 // Для вопросов с выбором - answerPart это индекс
@@ -901,7 +958,7 @@ class QuizService
                 }
                 $index = (int) $answerPart;
                 if ($index >= 0 && $index < count($answers)) {
-                    return $answers[$index];
+                    return ['index' => $index, 'answer' => $answers[$index]];
                 }
             }
         }

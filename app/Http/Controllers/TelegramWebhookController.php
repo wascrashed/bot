@@ -678,6 +678,7 @@ class TelegramWebhookController extends Controller
                 'chat_id' => $chatId,
                 'user_id' => $userId,
                 'has_user_score' => !empty($userScore),
+                'message_length' => strlen($message),
             ]);
             
             $result = $telegramService->sendMessage(
@@ -686,22 +687,40 @@ class TelegramWebhookController extends Controller
                 ['parse_mode' => 'HTML']
             );
             
+            if ($result === false || $result === null || !is_array($result)) {
+                try {
+                    Log::error('❌ /status response: sendMessage returned false/null or invalid result', [
+                        'chat_id' => $chatId,
+                        'user_id' => $userId,
+                        'result_type' => gettype($result),
+                        'message' => 'Bot may not have permission to send messages in this group, or Telegram API error',
+                    ]);
+                } catch (\Exception $logError) {
+                    // Игнорируем ошибки логирования
+                }
+                return;
+            }
+            
             try {
                 Log::info('✅ /status response sent successfully', [
                     'chat_id' => $chatId,
                     'user_id' => $userId,
-                    'result' => $result,
+                    'has_message_id' => isset($result['message_id']),
+                    'message_id' => $result['message_id'] ?? null,
+                    'result_keys' => array_keys($result),
                 ]);
             } catch (\Exception $logError) {
                 // Игнорируем ошибки логирования
             }
         } catch (\Exception $e) {
             try {
-                Log::error('❌ Failed to send status command response', [
+                Log::error('❌ Failed to send /status response', [
                     'chat_id' => $chatId,
                     'user_id' => $userId,
                     'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
+                    'error_code' => $e->getCode(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
                 ]);
             } catch (\Exception $logError) {
                 // Игнорируем ошибки логирования

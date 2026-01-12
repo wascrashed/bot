@@ -18,6 +18,7 @@ class ActiveQuiz extends Model
         'question_id',
         'message_id',
         'answers_order',
+        'correct_answer_index',
         'started_at',
         'expires_at',
         'is_active',
