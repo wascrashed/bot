@@ -35,11 +35,15 @@ class TelegramWebhookController extends Controller
                     $chatId = $update['callback_query']['message']['chat']['id'];
                 }
                 
-                Log::info('Telegram webhook received', [
-                    'has_message' => isset($update['message']),
-                    'has_callback' => isset($update['callback_query']),
-                    'chat_id' => $chatId,
-                ]);
+                try {
+                    Log::info('Telegram webhook received', [
+                        'has_message' => isset($update['message']),
+                        'has_callback' => isset($update['callback_query']),
+                        'chat_id' => $chatId,
+                    ]);
+                } catch (\Exception $logError) {
+                    // Игнорируем ошибки логирования, чтобы не прерывать выполнение
+                }
             }
 
             // Обработка callback_query (нажатия на кнопки)
@@ -341,27 +345,66 @@ class TelegramWebhookController extends Controller
      */
     private function handleCallbackQuery(array $callbackQuery): void
     {
+        // ВАЖНО: Логируем ВСЕ callback query для диагностики
+        try {
+            Log::info('🔵 CALLBACK QUERY RECEIVED', [
+                'has_from' => isset($callbackQuery['from']),
+                'has_message' => isset($callbackQuery['message']),
+                'has_data' => isset($callbackQuery['data']),
+                'has_id' => isset($callbackQuery['id']),
+                'data' => $callbackQuery['data'] ?? null,
+                'callback_query_id' => $callbackQuery['id'] ?? null,
+            ]);
+        } catch (\Exception $logError) {
+            // Игнорируем ошибки логирования, чтобы не прерывать выполнение
+        }
+
         $from = $callbackQuery['from'] ?? null;
         $message = $callbackQuery['message'] ?? null;
         $data = $callbackQuery['data'] ?? '';
         $callbackQueryId = $callbackQuery['id'] ?? null;
 
         if (!$from || !$message || !$data || !$callbackQueryId) {
+            try {
+                Log::warning('❌ Callback query missing required fields', [
+                    'has_from' => !empty($from),
+                    'has_message' => !empty($message),
+                    'has_data' => !empty($data),
+                    'has_callback_query_id' => !empty($callbackQueryId),
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
             return;
         }
 
         // Игнорировать нажатия от ботов
         if ($from['is_bot'] ?? false) {
+            try {
+                Log::info('⚠️ Callback query from bot, ignoring');
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
             return;
         }
 
         $chat = $message['chat'] ?? null;
         if (!$chat) {
+            try {
+                Log::warning('❌ Callback query message has no chat');
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
             return;
         }
 
         $chatType = $chat['type'] ?? null;
         if (!in_array($chatType, ['group', 'supergroup'])) {
+            try {
+                Log::info('⚠️ Callback query from non-group chat', ['chat_type' => $chatType]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
             return;
         }
 
@@ -413,11 +456,13 @@ class TelegramWebhookController extends Controller
 
         // Логировать обработку callback
         try {
-            Log::info('Processing callback answer', [
+            Log::info('✅ Processing callback answer', [
                 'active_quiz_id' => $activeQuiz->id,
                 'chat_id' => $chatId,
                 'user_id' => $userId,
+                'username' => $username,
                 'callback_data' => $data,
+                'callback_query_id' => $callbackQueryId,
             ]);
         } catch (\Exception $logError) {
             // Игнорируем ошибки логирования
