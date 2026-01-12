@@ -46,6 +46,39 @@ class ChatController extends Controller
     }
 
     /**
+     * Restore chat (create if deleted)
+     */
+    public function restore(Request $request, $chatId)
+    {
+        try {
+            // Попробовать найти существующий чат
+            $chat = ChatStatistics::where('chat_id', $chatId)->first();
+            
+            if ($chat) {
+                // Чат уже существует - просто активировать
+                $chat->is_active = true;
+                $chat->save();
+                return back()->with('success', "Чат уже существует и был активирован.");
+            }
+            
+            // Чат не существует - создать новый
+            $chatType = $request->input('chat_type', 'group');
+            $chatTitle = $request->input('chat_title', null);
+            
+            $chat = ChatStatistics::create([
+                'chat_id' => $chatId,
+                'chat_type' => $chatType,
+                'chat_title' => $chatTitle,
+                'is_active' => true,
+            ]);
+            
+            return back()->with('success', "Чат успешно восстановлен. Отправьте сообщение в группу, чтобы обновить название чата.");
+        } catch (\Exception $e) {
+            return back()->with('error', 'Ошибка при восстановлении чата: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Delete chat from database
      */
     public function destroy($chatId)

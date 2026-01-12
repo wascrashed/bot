@@ -66,7 +66,26 @@
             {{ $chats->links() }}
         </div>
     @else
-        <p>Чаты не найдены.</p>
+        <div class="card-body">
+            <p>Чаты не найдены.</p>
+            <p class="text-muted">Если вы удалили чат, он автоматически восстановится при следующем сообщении в группе.</p>
+            <p class="text-muted">Или вы можете восстановить чат вручную, указав его ID:</p>
+            <form action="{{ route('admin.chats.restore', 0) }}" method="POST" class="mt-3" onsubmit="const chatId = prompt('Введите ID чата (число):'); if (!chatId) return false; this.action = this.action.replace('/0/', '/' + chatId + '/'); return true;">
+                @csrf
+                <div class="form-group">
+                    <label for="chat_type">Тип чата:</label>
+                    <select name="chat_type" id="chat_type" class="form-control" style="max-width: 200px; display: inline-block;">
+                        <option value="group">Группа</option>
+                        <option value="supergroup">Супергруппа</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="chat_title">Название чата (опционально):</label>
+                    <input type="text" name="chat_title" id="chat_title" class="form-control" style="max-width: 300px; display: inline-block;" placeholder="Название группы">
+                </div>
+                <button type="submit" class="btn btn-success">Восстановить чат</button>
+            </form>
+        </div>
     @endif
 </div>
 @endsection
