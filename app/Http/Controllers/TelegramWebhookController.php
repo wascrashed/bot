@@ -161,6 +161,8 @@ class TelegramWebhookController extends Controller
             'chat_id' => $chatId,
             'found_count' => $activeQuizzes->count(),
             'quiz_ids' => $activeQuizzes->pluck('id')->toArray(),
+            'has_text' => !empty($message['text'] ?? ''),
+            'text_preview' => substr($message['text'] ?? '', 0, 50),
         ]);
         
         $activeQuiz = null;
@@ -224,14 +226,22 @@ class TelegramWebhookController extends Controller
                 $quiz->started_at = $startedAt;
                 $quiz->expires_at = $expiresAt;
                 $activeQuiz = $quiz;
-                Log::info('Active quiz found for message', [
+                Log::info('✅ Active quiz found for message - WILL PROCESS ANSWER', [
                     'active_quiz_id' => $quiz->id,
                     'chat_id' => $chatId,
-                    'started_at' => $startedAt->format('Y-m-d H:i:s'),
-                    'expires_at' => $expiresAt->format('Y-m-d H:i:s'),
-                    'now' => $now->format('Y-m-d H:i:s'),
+                    'started_at' => $startedAt->format('Y-m-d H:i:s T'),
+                    'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
+                    'now' => $now->format('Y-m-d H:i:s T'),
+                    'time_remaining_seconds' => max(0, $now->diffInSeconds($expiresAt, false)),
                 ]);
                 break; // Нашли активную викторину
+            } else {
+                Log::info('❌ Quiz expired, skipping', [
+                    'active_quiz_id' => $quiz->id,
+                    'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
+                    'now' => $now->format('Y-m-d H:i:s T'),
+                    'time_past_seconds' => abs($now->diffInSeconds($expiresAt, false)),
+                ]);
             }
         }
         
@@ -306,17 +316,14 @@ class TelegramWebhookController extends Controller
                     ]);
                 }
             } else {
-                Log::debug('Message has no text, skipping', [
-                    'chat_id' => $chatId,
-                    'message_keys' => array_keys($message),
-                ]);
+                // Пропускаем сообщения без текста (стикеры, фото и т.д.)
+                // Не логируем, чтобы не засорять логи
             }
         } else {
-            // Нет активной викторины - обновить статистику чата для отслеживания
-            Log::debug('No active quiz found for message', [
-                'chat_id' => $chatId,
-                'has_text' => !empty($message['text'] ?? ''),
-            ]);
+            // Нет активной викторины - логируем только если есть текст (потенциальный ответ)
+            if (!empty($message['text'] ?? '')) {
+                // Логирование уже есть ниже в коде, здесь не нужно
+            }
             \App\Models\ChatStatistics::getOrCreate($chatId, $chatType, $chat['title'] ?? null);
         }
     }

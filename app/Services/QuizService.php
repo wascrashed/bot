@@ -574,7 +574,7 @@ class QuizService
                 'started_at' => $startedAt->format('Y-m-d H:i:s T'),
                 'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
                 'now' => $now->format('Y-m-d H:i:s T'),
-                'is_expired' => $expiresAt->isPast(),
+                'is_expired' => $expiresAt->lessThanOrEqualTo($now),
                 'time_remaining_seconds' => max(0, $now->diffInSeconds($expiresAt, false)),
             ]);
 
@@ -591,18 +591,28 @@ class QuizService
 
             // Проверить истечение времени с использованием UTC
             // ВАЖНО: использовать lessThanOrEqualTo вместо isPast, чтобы точно определить истечение
-            if ($expiresAt->lessThanOrEqualTo($now)) {
-                Log::warning('ActiveQuiz expired', [
+            // Викторина считается истекшей, если expires_at <= now
+            $isExpired = $expiresAt->lessThanOrEqualTo($now);
+            
+            if ($isExpired) {
+                Log::warning('❌ ActiveQuiz expired - ANSWER WILL NOT BE SAVED', [
                     'active_quiz_id' => $activeQuizId,
                     'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
                     'now' => $now->format('Y-m-d H:i:s T'),
-                    'time_diff_seconds' => $now->diffInSeconds($expiresAt),
+                    'time_past_seconds' => abs($now->diffInSeconds($expiresAt, false)),
                 ]);
                 if ($callbackQueryId) {
                     $this->telegram->answerCallbackQuery($callbackQueryId, 'Время на ответ истекло!', false);
                 }
                 return;
             }
+            
+            Log::info('✅ Quiz is active - PROCEEDING WITH ANSWER PROCESSING', [
+                'active_quiz_id' => $activeQuizId,
+                'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
+                'now' => $now->format('Y-m-d H:i:s T'),
+                'time_remaining_seconds' => max(0, $now->diffInSeconds($expiresAt, false)),
+            ]);
 
             // Проверить, не ответил ли уже этот пользователь
             $existingResult = QuizResult::where('active_quiz_id', $activeQuizId)
