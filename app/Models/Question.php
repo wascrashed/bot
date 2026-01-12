@@ -62,9 +62,13 @@ class Question extends Model
      */
     public function getCorrectAnswerText(): string
     {
-        // Если есть correct_answer_text - используем его
-        if (!empty($this->correct_answer_text)) {
-            return $this->correct_answer_text;
+        try {
+            // Если есть correct_answer_text - используем его
+            if (!empty($this->correct_answer_text)) {
+                return $this->correct_answer_text;
+            }
+        } catch (\Exception $e) {
+            // Игнорируем ошибки доступа к полю (если поле не существует)
         }
         
         // Fallback для старых данных - correct_answer может быть текстом
@@ -73,9 +77,18 @@ class Question extends Model
         }
         
         // Если correct_answer - это индекс, получаем из массива ответов
-        $allAnswers = $this->getAllAnswers();
-        $index = (int)$this->correct_answer;
-        return $allAnswers[$index] ?? '';
+        try {
+            $allAnswers = $this->getAllAnswers();
+            $index = (int)$this->correct_answer;
+            if (isset($allAnswers[$index])) {
+                return $allAnswers[$index];
+            }
+        } catch (\Exception $e) {
+            // Игнорируем ошибки
+        }
+        
+        // Последний fallback - вернуть correct_answer как есть
+        return (string)$this->correct_answer;
     }
     
     /**

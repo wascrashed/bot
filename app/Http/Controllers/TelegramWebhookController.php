@@ -75,11 +75,31 @@ class TelegramWebhookController extends Controller
 
             return response()->json(['ok' => true]);
         } catch (\Exception $e) {
-            Log::error('Webhook error', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
+            // Критически важно логировать ошибку перед возвратом 500
+            try {
+                Log::error('❌ WEBHOOK ERROR 500', [
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            } catch (\Exception $logError) {
+                // Если логирование не работает, записать в файл напрямую
+                try {
+                    $logFile = storage_path('logs/webhook_errors.log');
+                    $errorMsg = date('Y-m-d H:i:s') . " - ERROR: " . $e->getMessage() . 
+                                " in " . $e->getFile() . ":" . $e->getLine() . "\n";
+                    file_put_contents($logFile, $errorMsg, FILE_APPEND);
+                } catch (\Exception $fileError) {
+                    // Игнорируем ошибки записи в файл
+                }
+            }
+            
+            // Возвращаем 500, но с минимальной информацией для безопасности
+            return response()->json([
+                'ok' => false, 
+                'error' => 'Internal server error'
+            ], 500);
         }
     }
 
@@ -149,6 +169,9 @@ class TelegramWebhookController extends Controller
         }
 
         $chatId = $chat['id'];
+        
+        // ВАЖНО: Определить $from ДО использования
+        $from = $message['from'] ?? null;
         
         // Обработка команд
         $text = trim($message['text'] ?? '');
@@ -221,7 +244,10 @@ class TelegramWebhookController extends Controller
             }
         }
         
-        $from = $message['from'] ?? null;
+        // $from уже определен выше для команд, но переопределяем для остальной логики
+        if (!isset($from)) {
+            $from = $message['from'] ?? null;
+        }
         
         // Игнорировать сообщения от ботов
         if ($from && ($from['is_bot'] ?? false)) {

@@ -32,20 +32,12 @@ class QuizResult extends Model
     }
 
     /**
-     * Получить текст ответа (для вопросов с выбором - по индексу из answers_order)
+     * Получить текст ответа
+     * Теперь answer всегда содержит текст ответа, а не индекс
      */
     public function getAnswerText(): string
     {
-        // Если answer - это число (индекс), получить текст из answers_order
-        if (is_numeric($this->answer) && $this->activeQuiz) {
-            $answersOrder = $this->activeQuiz->answers_order ?? [];
-            $index = (int)$this->answer;
-            if (isset($answersOrder[$index])) {
-                return $answersOrder[$index];
-            }
-        }
-        
-        // Иначе вернуть сам answer (для текстовых вопросов)
+        // answer теперь всегда содержит текст ответа
         return $this->answer;
     }
 }

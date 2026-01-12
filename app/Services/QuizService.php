@@ -177,6 +177,13 @@ class QuizService
                 'correct_answer_index' => $correctAnswerIndex,
                 'correct_answer_text' => $question->getCorrectAnswerText(),
                 'correct_answer_index_in_question' => (int)$question->correct_answer,
+                'answers_with_indexes' => array_map(function($index, $answer) use ($correctAnswerIndex) {
+                    return [
+                        'index' => $index,
+                        'text' => $answer,
+                        'is_correct' => ($index === $correctAnswerIndex)
+                    ];
+                }, array_keys($answersOrder), $answersOrder),
                 'started_at_raw' => $startedAt->format('Y-m-d H:i:s'),
                 'expires_at_raw' => $expiresAt->format('Y-m-d H:i:s'),
                 'timezone' => $startedAt->timezone->getName(),
@@ -730,6 +737,18 @@ class QuizService
                 if ($parsed !== null) {
                     $selectedAnswerIndex = $parsed['index'];
                     $selectedAnswer = $parsed['answer'];
+                    
+                    // Логировать для отладки
+                    try {
+                        Log::info('Answer parsed from callback', [
+                            'callback_data' => $callbackData,
+                            'selected_index' => $selectedAnswerIndex,
+                            'selected_answer' => $selectedAnswer,
+                            'answers_order' => $activeQuiz->answers_order,
+                        ]);
+                    } catch (\Exception $logError) {
+                        // Игнорируем ошибки логирования
+                    }
                 }
             } else {
                 // Текстовый ответ
@@ -785,40 +804,33 @@ class QuizService
                 return;
             }
 
-            // Быстро проверить ответ по индексу (для вопросов с выбором) или по тексту
+            // Проверяем ответ по тексту (значению) - это надежнее, так как Telegram передает значение в том же формате
+            // Сравниваем текст выбранного ответа с правильным ответом из БД
             $isCorrect = false;
             
-            // Для вопросов с выбором используем сравнение по индексу
             if (in_array($question->question_type, [Question::TYPE_MULTIPLE_CHOICE, Question::TYPE_TRUE_FALSE])) {
-                // Если есть индекс правильного ответа - сравниваем по индексу
-                if ($selectedAnswerIndex !== null && $activeQuiz->correct_answer_index !== null) {
-                    $isCorrect = ($selectedAnswerIndex === $activeQuiz->correct_answer_index);
-                    
-                    try {
-                        Log::info('Answer check by index', [
-                            'selected_index' => $selectedAnswerIndex,
-                            'correct_index' => $activeQuiz->correct_answer_index,
-                            'is_correct' => $isCorrect,
-                            'type' => 'index_comparison',
-                        ]);
-                    } catch (\Exception $logError) {
-                        // Игнорируем ошибки логирования
-                    }
-                } else {
-                    // Fallback на текстовое сравнение для старых викторин без correct_answer_index
-                    $isCorrect = $question->checkAnswer($selectedAnswer);
-                    
-                    try {
-                        Log::warning('Using text comparison fallback', [
-                            'selected_answer' => $selectedAnswer,
-                            'selected_index' => $selectedAnswerIndex,
-                            'correct_answer_index' => $activeQuiz->correct_answer_index,
-                            'is_correct' => $isCorrect,
-                            'type' => 'text_fallback',
-                        ]);
-                    } catch (\Exception $logError) {
-                        // Игнорируем ошибки логирования
-                    }
+                // Для вопросов с выбором - сравниваем текст ответа с correct_answer_text
+                // ВАЖНО: selectedAnswer уже содержит текст ответа из answers_order, который Telegram передал
+                $correctAnswerText = $question->getCorrectAnswerText();
+                
+                // Нормализуем оба значения для сравнения (без учета регистра и пробелов)
+                $selectedAnswerNormalized = mb_strtolower(trim($selectedAnswer));
+                $correctAnswerNormalized = mb_strtolower(trim($correctAnswerText));
+                
+                $isCorrect = ($selectedAnswerNormalized === $correctAnswerNormalized);
+                
+                try {
+                    Log::info('Answer check by text value', [
+                        'selected_answer' => $selectedAnswer,
+                        'selected_answer_normalized' => $selectedAnswerNormalized,
+                        'selected_index' => $selectedAnswerIndex,
+                        'correct_answer_text' => $correctAnswerText,
+                        'correct_answer_normalized' => $correctAnswerNormalized,
+                        'is_correct' => $isCorrect,
+                        'type' => 'text_comparison',
+                    ]);
+                } catch (\Exception $logError) {
+                    // Игнорируем ошибки логирования
                 }
             } else {
                 // Для текстовых вопросов сравниваем по тексту
@@ -833,10 +845,10 @@ class QuizService
                     'user_id' => $userId,
                     'selected_answer' => $selectedAnswer,
                     'selected_answer_index' => $selectedAnswerIndex,
-                    'correct_answer_index' => $activeQuiz->correct_answer_index,
+                    'correct_answer_text' => $question->getCorrectAnswerText(),
                     'is_correct' => $isCorrect,
                     'response_time_ms' => $responseTime,
-                    'comparison_method' => ($selectedAnswerIndex !== null && $activeQuiz->correct_answer_index !== null) ? 'by_index' : 'by_text',
+                    'comparison_method' => 'by_text_value',
                 ]);
             } catch (\Exception $logError) {
                 // Игнорируем ошибки логирования
@@ -867,13 +879,9 @@ class QuizService
             }
 
             // Сохранить результат (после отправки уведомления для ускорения)
-            // Для вопросов с выбором сохраняем индекс, для текстовых - текст
-            $answerToSave = $selectedAnswer;
-            if (in_array($question->question_type, [Question::TYPE_MULTIPLE_CHOICE, Question::TYPE_TRUE_FALSE]) && 
-                $selectedAnswerIndex !== null) {
-                // Сохраняем индекс ответа вместо текста
-                $answerToSave = (string)$selectedAnswerIndex;
-            }
+            // Сохраняем текст ответа (значение) - это надежнее, так как Telegram передает значение в том же формате
+            // Индекс сохраняем только для справки, но сравнение делаем по тексту
+            $answerToSave = $selectedAnswer; // Сохраняем текст ответа
             
             $result = QuizResult::create([
                 'active_quiz_id' => $activeQuizId,
@@ -892,7 +900,6 @@ class QuizService
                     'user_id' => $userId,
                     'answer_saved' => $answerToSave,
                     'answer_text' => $selectedAnswer,
-                    'answer_index' => $selectedAnswerIndex,
                     'is_correct' => $isCorrect,
                     'result_id' => $result->id,
                 ]);
@@ -1012,7 +1019,10 @@ class QuizService
                 }
                 $index = (int) $answerPart;
                 if ($index >= 0 && $index < count($answers)) {
-                    return ['index' => $index, 'answer' => $answers[$index]];
+                    // ВАЖНО: Возвращаем ТЕКСТ ответа, который пользователь выбрал
+                    // Это значение будет сравниваться с correct_answer_text
+                    $answerText = $answers[$index];
+                    return ['index' => $index, 'answer' => $answerText];
                 }
             }
         }
@@ -1191,7 +1201,18 @@ class QuizService
 
             // Сформировать сообщение с результатами
             $message = "<b>⏱ Время вышло!</b>\n\n";
-            $message .= "<b>Правильный ответ:</b> " . $question->getCorrectAnswerText() . "\n\n";
+            try {
+                $correctAnswerText = $question->getCorrectAnswerText();
+                $message .= "<b>Правильный ответ:</b> " . $correctAnswerText . "\n\n";
+            } catch (\Exception $e) {
+                // Fallback если метод не работает
+                try {
+                    $correctAnswerText = $question->correct_answer_text ?? $question->correct_answer ?? 'Не указан';
+                    $message .= "<b>Правильный ответ:</b> " . $correctAnswerText . "\n\n";
+                } catch (\Exception $e2) {
+                    $message .= "<b>Правильный ответ:</b> Не указан\n\n";
+                }
+            }
 
             if ($totalAnswers > 0) {
                 $message .= "📊 <b>Статистика:</b>\n";
