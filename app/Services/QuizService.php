@@ -518,23 +518,23 @@ class QuizService
     /**
      * Обработать текстовый ответ пользователя
      */
-    public function processAnswer(int $activeQuizId, int $userId, string $username, string $firstName, string $answerText, ?int $messageId = null): void
+    public function processAnswer(int $activeQuizId, int $userId, string $username, string $firstName, string $answerText, ?int $messageId = null, ?int $chatId = null): void
     {
-        $this->processAnswerInternal($activeQuizId, $userId, $username, $firstName, $answerText, null, null, $messageId);
+        $this->processAnswerInternal($activeQuizId, $userId, $username, $firstName, $answerText, null, null, $messageId, $chatId);
     }
 
     /**
      * Обработать ответ через callback (кнопка)
      */
-    public function processAnswerWithCallback(int $activeQuizId, int $userId, string $username, string $firstName, string $callbackData, string $callbackQueryId): void
+    public function processAnswerWithCallback(int $activeQuizId, int $userId, string $username, string $firstName, string $callbackData, string $callbackQueryId, ?int $messageId = null, ?int $chatId = null): void
     {
-        $this->processAnswerInternal($activeQuizId, $userId, $username, $firstName, '', $callbackData, $callbackQueryId);
+        $this->processAnswerInternal($activeQuizId, $userId, $username, $firstName, '', $callbackData, $callbackQueryId, $messageId, $chatId);
     }
 
     /**
      * Внутренний метод обработки ответа
      */
-    private function processAnswerInternal(int $activeQuizId, int $userId, string $username, string $firstName, string $answerText, ?string $callbackData = null, ?string $callbackQueryId = null, ?int $messageId = null): void
+    private function processAnswerInternal(int $activeQuizId, int $userId, string $username, string $firstName, string $answerText, ?string $callbackData = null, ?string $callbackQueryId = null, ?int $messageId = null, ?int $chatId = null): void
     {
         Log::info('processAnswerInternal called', [
             'active_quiz_id' => $activeQuizId,
@@ -548,9 +548,12 @@ class QuizService
 
             if (!$activeQuiz) {
                 Log::warning('ActiveQuiz not found', ['active_quiz_id' => $activeQuizId]);
+                $errorMessage = '❌ Викторина уже завершена. Ваш ответ не зарегистрирован.';
                 if ($callbackQueryId) {
-                    $this->telegram->answerCallbackQuery($callbackQueryId, 'Викторина уже завершена', false);
+                    $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
                 }
+                // Для текстовых ответов chat_id нужно получить из другого источника
+                // Пока просто логируем, так как без activeQuiz нет chat_id
                 return;
             }
 
@@ -583,8 +586,19 @@ class QuizService
                     'active_quiz_id' => $activeQuizId,
                     'is_active' => $activeQuiz->is_active,
                 ]);
+                $errorMessage = '❌ Викторина уже завершена. Ваш ответ не зарегистрирован.';
                 if ($callbackQueryId) {
-                    $this->telegram->answerCallbackQuery($callbackQueryId, 'Викторина уже завершена', false);
+                    $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
+                } elseif ($messageId && $chatId) {
+                    try {
+                        $this->telegram->sendMessage(
+                            $chatId,
+                            $errorMessage,
+                            ['parse_mode' => 'HTML']
+                        );
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to send error notification', ['error' => $e->getMessage()]);
+                    }
                 }
                 return;
             }
@@ -601,8 +615,19 @@ class QuizService
                     'now' => $now->format('Y-m-d H:i:s T'),
                     'time_past_seconds' => abs($now->diffInSeconds($expiresAt, false)),
                 ]);
+                $errorMessage = '⏰ Время на ответ истекло! Ваш ответ не зарегистрирован.';
                 if ($callbackQueryId) {
-                    $this->telegram->answerCallbackQuery($callbackQueryId, 'Время на ответ истекло!', false);
+                    $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
+                } elseif ($messageId && $chatId) {
+                    try {
+                        $this->telegram->sendMessage(
+                            $chatId,
+                            $errorMessage,
+                            ['parse_mode' => 'HTML']
+                        );
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to send error notification', ['error' => $e->getMessage()]);
+                    }
                 }
                 return;
             }
@@ -620,9 +645,19 @@ class QuizService
                 ->first();
 
             if ($existingResult) {
-                // Если это callback от кнопки, ответить, что пользователь уже ответил
+                $errorMessage = '⚠️ Вы уже ответили на этот вопрос! Ваш ответ не зарегистрирован повторно.';
                 if ($callbackQueryId) {
-                    $this->telegram->answerCallbackQuery($callbackQueryId, 'Вы уже ответили на этот вопрос!', true);
+                    $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
+                } elseif ($messageId && $chatId) {
+                    try {
+                        $this->telegram->sendMessage(
+                            $chatId,
+                            $errorMessage,
+                            ['parse_mode' => 'HTML']
+                        );
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to send error notification', ['error' => $e->getMessage()]);
+                    }
                 }
                 return;
             }
@@ -649,8 +684,19 @@ class QuizService
                     'callback_data' => $callbackData,
                 ]);
                 
+                $errorMessage = '❌ Не удалось распознать ваш ответ. Ваш ответ не зарегистрирован.';
                 if ($callbackQueryId) {
-                    $this->telegram->answerCallbackQuery($callbackQueryId, 'Не удалось распознать ответ', false);
+                    $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
+                } elseif ($messageId && $chatId) {
+                    try {
+                        $this->telegram->sendMessage(
+                            $chatId,
+                            $errorMessage,
+                            ['parse_mode' => 'HTML']
+                        );
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to send error notification', ['error' => $e->getMessage()]);
+                    }
                 }
                 return;
             }
@@ -686,31 +732,6 @@ class QuizService
                 'result_id' => $result->id,
             ]);
 
-            // Отправить мини-уведомление пользователю (reply на его сообщение)
-            if ($messageId) {
-                try {
-                    $emoji = $isCorrect ? '✅' : '❌';
-                    $message = $isCorrect 
-                        ? "{$emoji} Правильно!" 
-                        : "{$emoji} Неправильно";
-                    
-                    // Отправить reply на сообщение пользователя (короткое уведомление)
-                    $this->telegram->sendMessage(
-                        $activeQuiz->chat_id,
-                        $message,
-                        [
-                            'parse_mode' => 'HTML',
-                            'reply_to_message_id' => $messageId,
-                            'disable_notification' => false, // Показать уведомление
-                        ]
-                    );
-                } catch (\Exception $e) {
-                    Log::warning('Failed to send answer notification', [
-                        'user_id' => $userId,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
 
             // Если это правильный ответ и первый в викторине
             if ($isCorrect) {
@@ -734,12 +755,38 @@ class QuizService
                 }
             }
 
-            // Ответить на callback, если был
+            // Ответить на callback, если был (это показывается только пользователю, который нажал кнопку)
             if ($callbackQueryId) {
+                // Простое уведомление о том, что выбор зарегистрирован
                 $callbackText = $isCorrect 
-                    ? "✅ Правильно! Вы получили {$question->getPointsForAnswer()} очков!"
-                    : "❌ Неправильно. Правильный ответ: {$question->correct_answer}";
-                $this->telegram->answerCallbackQuery($callbackQueryId, $callbackText, $isCorrect);
+                    ? "✅ Ваш ответ зарегистрирован! Правильно!"
+                    : "❌ Ваш ответ зарегистрирован. Неправильно.";
+                // show_alert=true показывает всплывающее окно, которое видит только пользователь
+                $this->telegram->answerCallbackQuery($callbackQueryId, $callbackText, true);
+            } else {
+                // Для текстовых ответов - простое уведомление, что ответ зарегистрирован
+                // В Telegram нет способа показать всплывающее уведомление для текстовых сообщений
+                // Поэтому отправляем короткое сообщение в группу
+                try {
+                    $emoji = $isCorrect ? '✅' : '❌';
+                    $message = $isCorrect 
+                        ? "{$emoji} Правильно!" 
+                        : "{$emoji} Неправильно";
+                    
+                    // Отправить короткое сообщение в группу (без reply)
+                    $this->telegram->sendMessage(
+                        $activeQuiz->chat_id,
+                        $message,
+                        [
+                            'parse_mode' => 'HTML',
+                        ]
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('Failed to send text answer notification', [
+                        'user_id' => $userId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
 
             // Логировать ответ
@@ -748,9 +795,28 @@ class QuizService
         } catch (\Exception $e) {
             Log::error('Process answer error', [
                 'active_quiz_id' => $activeQuizId,
+                'user_id' => $userId,
                 'error' => $e->getMessage(),
             ]);
             $this->analytics->logError("Process answer error: " . $e->getMessage());
+            
+            // Отправить уведомление об ошибке пользователю
+            $errorMessage = '❌ Произошла ошибка при регистрации ответа. Попробуйте еще раз.';
+            try {
+                if ($callbackQueryId) {
+                    $this->telegram->answerCallbackQuery($callbackQueryId, $errorMessage, true);
+                } elseif ($chatId) {
+                    $this->telegram->sendMessage(
+                        $chatId,
+                        $errorMessage,
+                        ['parse_mode' => 'HTML']
+                    );
+                }
+            } catch (\Exception $notifyError) {
+                Log::warning('Failed to send error notification to user', [
+                    'error' => $notifyError->getMessage(),
+                ]);
+            }
         }
     }
 

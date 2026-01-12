@@ -296,7 +296,7 @@ class TelegramWebhookController extends Controller
                 ]);
 
                 try {
-                    // Передать message_id для reply-уведомления
+                    // Передать message_id и chat_id для уведомлений
                     $messageId = $message['message_id'] ?? null;
                     $this->quizService->processAnswer(
                         $activeQuiz->id,
@@ -304,7 +304,8 @@ class TelegramWebhookController extends Controller
                         $username,
                         $firstName,
                         $text,
-                        $messageId
+                        $messageId,
+                        $chatId
                     );
                     Log::info('Answer processed successfully', [
                         'active_quiz_id' => $activeQuiz->id,
@@ -392,13 +393,17 @@ class TelegramWebhookController extends Controller
         ]);
 
         // Обработать ответ через callback
+        // Передать message_id и chat_id для уведомлений
+        $messageId = $message['message_id'] ?? null;
         $this->quizService->processAnswerWithCallback(
             $activeQuiz->id,
             $userId,
             $username,
             $firstName,
             $data, // callback_data для парсинга ответа
-            $callbackQueryId // callback_query_id для ответа на callback
+            $callbackQueryId, // callback_query_id для ответа на callback
+            $messageId, // message_id для уведомлений
+            $chatId // chat_id для отправки сообщений в группу
         );
     }
     
