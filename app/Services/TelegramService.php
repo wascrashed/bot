@@ -496,6 +496,14 @@ class TelegramService
     }
 
     /**
+     * Получить информацию о webhook
+     */
+    public function getWebhookInfo(): ?array
+    {
+        return $this->makeRequest('getWebhookInfo', []);
+    }
+
+    /**
      * Получить информацию о боте
      */
     public function getMe(): ?array

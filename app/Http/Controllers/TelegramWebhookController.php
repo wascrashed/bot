@@ -23,26 +23,43 @@ class TelegramWebhookController extends Controller
      */
     public function handle(Request $request)
     {
+        // ВАЖНО: Логируем ВСЕ входящие обновления для диагностики на проде
         try {
             $update = $request->all();
-
-            // Логировать только важные события, чтобы не засорять логи
-            if (isset($update['message']) || isset($update['callback_query'])) {
+            
+            // Логировать ВСЕ обновления (даже пустые) для диагностики
+            try {
+                $updateType = 'unknown';
                 $chatId = null;
-                if (isset($update['message']['chat']['id'])) {
-                    $chatId = $update['message']['chat']['id'];
-                } elseif (isset($update['callback_query']['message']['chat']['id'])) {
-                    $chatId = $update['callback_query']['message']['chat']['id'];
+                
+                if (isset($update['message'])) {
+                    $updateType = 'message';
+                    $chatId = $update['message']['chat']['id'] ?? null;
+                } elseif (isset($update['callback_query'])) {
+                    $updateType = 'callback_query';
+                    $chatId = $update['callback_query']['message']['chat']['id'] ?? null;
+                } elseif (isset($update['edited_message'])) {
+                    $updateType = 'edited_message';
+                    $chatId = $update['edited_message']['chat']['id'] ?? null;
+                } elseif (!empty($update)) {
+                    $updateType = 'other';
+                    $updateType .= ' (' . implode(', ', array_keys($update)) . ')';
                 }
                 
+                Log::info('🔵 WEBHOOK UPDATE RECEIVED', [
+                    'type' => $updateType,
+                    'chat_id' => $chatId,
+                    'has_message' => isset($update['message']),
+                    'has_callback' => isset($update['callback_query']),
+                    'update_keys' => array_keys($update),
+                ]);
+            } catch (\Exception $logError) {
+                // Если логирование не работает, попробуем записать в файл напрямую
                 try {
-                    Log::info('Telegram webhook received', [
-                        'has_message' => isset($update['message']),
-                        'has_callback' => isset($update['callback_query']),
-                        'chat_id' => $chatId,
-                    ]);
-                } catch (\Exception $logError) {
-                    // Игнорируем ошибки логирования, чтобы не прерывать выполнение
+                    $logFile = storage_path('logs/webhook_debug.log');
+                    file_put_contents($logFile, date('Y-m-d H:i:s') . ' - Webhook received but Log::info failed: ' . $logError->getMessage() . "\n", FILE_APPEND);
+                } catch (\Exception $fileError) {
+                    // Игнорируем ошибки записи в файл
                 }
             }
 
@@ -71,9 +88,26 @@ class TelegramWebhookController extends Controller
      */
     private function handleMessage(array $message): void
     {
+        // ВАЖНО: Логируем получение сообщения для диагностики
+        try {
+            Log::info('📨 handleMessage called', [
+                'has_chat' => isset($message['chat']),
+                'chat_type' => $message['chat']['type'] ?? null,
+                'has_text' => isset($message['text']),
+                'text_preview' => isset($message['text']) ? substr($message['text'], 0, 50) : null,
+            ]);
+        } catch (\Exception $logError) {
+            // Игнорируем ошибки логирования
+        }
+        
         // Проверить, что это сообщение из группы или супергруппы
         $chat = $message['chat'] ?? null;
         if (!$chat) {
+            try {
+                Log::warning('❌ handleMessage: chat is null');
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
             return;
         }
 
