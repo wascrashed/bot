@@ -18,7 +18,36 @@ class TestWebhook extends Command
         
         // 1. Проверить последние логи webhook
         $this->info("\n1. Проверка логов webhook:");
-        $this->line("   Выполните: tail -50 storage/logs/laravel.log | grep -i 'webhook\|message received\|processing'");
+        $logPath = storage_path('logs/laravel.log');
+        if (file_exists($logPath)) {
+            $lines = file($logPath);
+            $lastLines = array_slice($lines, -50);
+            $webhookEvents = [];
+            foreach ($lastLines as $line) {
+                if (stripos($line, 'webhook received') !== false || 
+                    stripos($line, 'message received in group') !== false ||
+                    stripos($line, 'telegram webhook received') !== false) {
+                    $webhookEvents[] = trim($line);
+                }
+            }
+            
+            if (empty($webhookEvents)) {
+                $this->warn("   ⚠️ Событий webhook не найдено в последних 50 строках");
+                $this->warn("   Это может означать, что бот не получает сообщения из группы!");
+                $this->info('');
+                $this->info('💡 Проверьте:');
+                $this->line('   1. Privacy mode должен быть отключен в BotFather');
+                $this->line('   2. Бот должен быть добавлен в группу');
+                $this->line('   3. Отправьте сообщение в группу и проверьте логи');
+            } else {
+                $this->info("   ✅ Найдено событий webhook: " . count($webhookEvents));
+                foreach (array_slice($webhookEvents, -5) as $event) {
+                    $this->line("   " . substr($event, 0, 120));
+                }
+            }
+        } else {
+            $this->warn("   ⚠️ Файл laravel.log не найден");
+        }
         
         // 2. Проверить активные викторины
         $this->info("\n2. Активные викторины:");

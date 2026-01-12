@@ -42,7 +42,24 @@ class GetTelegramBotInfo extends Command
                 $this->line("Can Join Groups: " . ($info['can_join_groups'] ? 'Yes' : 'No'));
             }
             if (isset($info['can_read_all_group_messages'])) {
-                $this->line("Can Read All Group Messages: " . ($info['can_read_all_group_messages'] ? 'Yes' : 'No'));
+                $canRead = $info['can_read_all_group_messages'];
+                $this->line("Can Read All Group Messages: " . ($canRead ? 'Yes' : 'No'));
+                
+                if (!$canRead) {
+                    $this->warn('');
+                    $this->warn('⚠️ ВНИМАНИЕ: Бот не может читать все сообщения в группах!');
+                    $this->warn('Это означает, что бот НЕ будет получать сообщения пользователей.');
+                    $this->info('');
+                    $this->info('💡 Как исправить:');
+                    $this->line('   1. Откройте @BotFather в Telegram');
+                    $this->line('   2. Отправьте /mybots');
+                    $this->line('   3. Выберите вашего бота');
+                    $this->line('   4. Bot Settings → Group Privacy');
+                    $this->line('   5. Выберите "Turn off" (отключить приватность)');
+                    $this->info('');
+                    $this->info('💡 После изменения настройки может потребоваться несколько минут для обновления.');
+                    $this->info('   Проверьте еще раз через: php artisan telegram:bot-info');
+                }
             }
             return Command::SUCCESS;
         } else {
