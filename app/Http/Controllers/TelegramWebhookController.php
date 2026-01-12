@@ -89,8 +89,10 @@ class TelegramWebhookController extends Controller
                     $telegramService->saveOwnerChatId($chat['id'], $username);
                 }
                 
-                // Если пользователь написал /chatid или /id, отправить ID чата
+                // Обработка команд в личном чате
                 $text = trim($message['text'] ?? '');
+                
+                // Команда /chatid или /id
                 if (!empty($text) && preg_match('/^\/(chatid|id|getid)(@\w+)?\s*$/i', $text)) {
                     $telegramService = new \App\Services\TelegramService();
                     $telegramService->sendMessage(
@@ -98,6 +100,11 @@ class TelegramWebhookController extends Controller
                         "🆔 <b>Ваш Chat ID:</b> <code>{$chat['id']}</code>\n\n💡 <i>Это ваш личный Chat ID</i>",
                         ['parse_mode' => 'HTML']
                     );
+                }
+                
+                // Команда /status в личном чате (показываем общую статистику по всем чатам)
+                if (!empty($text) && preg_match('/^\/(status|статус)(@\w+)?\s*$/i', $text)) {
+                    $this->handleStatusCommandPrivate($chat['id'], $from);
                 }
             }
             return; // Не обрабатываем личные сообщения дальше
@@ -109,8 +116,10 @@ class TelegramWebhookController extends Controller
 
         $chatId = $chat['id'];
         
-        // Если пользователь написал /chatid или /id в группе, отправить ID чата
+        // Обработка команд
         $text = trim($message['text'] ?? '');
+        
+        // Команда /chatid или /id
         if (!empty($text) && preg_match('/^\/(chatid|id|getid)(@\w+)?\s*$/i', $text)) {
             $telegramService = new \App\Services\TelegramService();
             $chatTitle = $chat['title'] ?? 'этой группы';
@@ -119,6 +128,12 @@ class TelegramWebhookController extends Controller
                 "🆔 <b>Chat ID {$chatTitle}:</b> <code>{$chatId}</code>\n\n💡 <i>Используйте этот ID для восстановления чата в админке</i>",
                 ['parse_mode' => 'HTML']
             );
+            return; // Не обрабатываем дальше
+        }
+        
+        // Команда /status
+        if (!empty($text) && preg_match('/^\/(status|статус)(@\w+)?\s*$/i', $text)) {
+            $this->handleStatusCommand($chatId, $from, $chat);
             return; // Не обрабатываем дальше
         }
         
@@ -170,13 +185,33 @@ class TelegramWebhookController extends Controller
             return;
         }
 
+        // ВАЖНО: Зарегистрировать чат при ЛЮБОМ сообщении из группы
+        // Это гарантирует, что чат будет в базе данных, даже если бот был добавлен до реализации этой логики
+        try {
+            \App\Models\ChatStatistics::getOrCreate($chatId, $chatType, $chat['title'] ?? null);
+        } catch (\Exception $e) {
+            // Игнорируем ошибки регистрации, чтобы не прерывать обработку
+            try {
+                Log::warning('Failed to register chat', [
+                    'chat_id' => $chatId,
+                    'error' => $e->getMessage(),
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
+        }
+
         // Логировать все сообщения из групп для диагностики
-        Log::info('Message received in group', [
-            'chat_id' => $chatId,
-            'chat_type' => $chatType,
-            'has_text' => !empty($message['text'] ?? ''),
-            'text' => $message['text'] ?? null,
-        ]);
+        try {
+            Log::info('Message received in group', [
+                'chat_id' => $chatId,
+                'chat_type' => $chatType,
+                'has_text' => !empty($message['text'] ?? ''),
+                'text' => $message['text'] ?? null,
+            ]);
+        } catch (\Exception $logError) {
+            // Игнорируем ошибки логирования
+        }
 
         // Найти активную викторину для этого чата
         // Сначала найти все активные викторины для этого чата
@@ -356,11 +391,8 @@ class TelegramWebhookController extends Controller
                 // Не логируем, чтобы не засорять логи
             }
         } else {
-            // Нет активной викторины - логируем только если есть текст (потенциальный ответ)
-            if (!empty($message['text'] ?? '')) {
-                // Логирование уже есть ниже в коде, здесь не нужно
-            }
-            \App\Models\ChatStatistics::getOrCreate($chatId, $chatType, $chat['title'] ?? null);
+            // Нет активной викторины - чат уже зарегистрирован выше при получении сообщения
+            // Здесь ничего не делаем
         }
     }
 
@@ -514,5 +546,151 @@ class TelegramWebhookController extends Controller
     {
         $telegramService = new \App\Services\TelegramService();
         $telegramService->removeChatFromDatabase($chatId);
+    }
+
+    /**
+     * Обработка команды /status
+     */
+    private function handleStatusCommand(int $chatId, ?array $from, array $chat): void
+    {
+        if (!$from) {
+            return;
+        }
+
+        $userId = $from['id'] ?? 0;
+        $username = $from['username'] ?? null;
+        $firstName = $from['first_name'] ?? 'Пользователь';
+
+        // Получить статистику пользователя в этом чате
+        $userScore = \App\Models\UserScore::where('chat_id', $chatId)
+            ->where('user_id', $userId)
+            ->first();
+
+        // Получить место пользователя в рейтинге
+        $position = null;
+        if ($userScore) {
+            $position = \App\Models\UserScore::where('chat_id', $chatId)
+                ->where(function($query) use ($userScore) {
+                    $query->where('total_points', '>', $userScore->total_points)
+                        ->orWhere(function($q) use ($userScore) {
+                            $q->where('total_points', '=', $userScore->total_points)
+                              ->where('correct_answers', '>', $userScore->correct_answers);
+                        });
+                })
+                ->count() + 1;
+        }
+
+        // Получить общее количество участников в чате
+        $totalParticipants = \App\Models\UserScore::where('chat_id', $chatId)->count();
+
+        // Формировать сообщение
+        $telegramService = new \App\Services\TelegramService();
+        $chatTitle = $chat['title'] ?? 'этой группы';
+        
+        if ($userScore) {
+            $accuracy = $userScore->total_answers > 0 
+                ? round(($userScore->correct_answers / $userScore->total_answers) * 100, 1)
+                : 0;
+            
+            $message = "📊 <b>Ваша статистика в {$chatTitle}</b>\n\n";
+            $message .= "👤 <b>Пользователь:</b> " . ($firstName ?? $username ?? "User {$userId}") . "\n";
+            $message .= "🏆 <b>Очки:</b> " . number_format($userScore->total_points) . "\n";
+            $message .= "✅ <b>Правильных ответов:</b> " . number_format($userScore->correct_answers) . "\n";
+            $message .= "📝 <b>Всего ответов:</b> " . number_format($userScore->total_answers) . "\n";
+            $message .= "🎯 <b>Точность:</b> {$accuracy}%\n";
+            $message .= "🥇 <b>Первых мест:</b> " . number_format($userScore->first_place_count) . "\n";
+            
+            if ($position && $totalParticipants > 0) {
+                $message .= "📍 <b>Место в рейтинге:</b> {$position} из {$totalParticipants}\n";
+            }
+            
+            if ($userScore->last_activity_at) {
+                $lastActivity = $userScore->last_activity_at->diffForHumans();
+                $message .= "⏰ <b>Последняя активность:</b> {$lastActivity}\n";
+            }
+        } else {
+            $message = "📊 <b>Ваша статистика в {$chatTitle}</b>\n\n";
+            $message .= "👤 <b>Пользователь:</b> " . ($firstName ?? $username ?? "User {$userId}") . "\n";
+            $message .= "❌ <b>У вас пока нет статистики в этом чате.</b>\n\n";
+            $message .= "💡 <i>Участвуйте в викторинах, чтобы заработать очки!</i>";
+        }
+
+        try {
+            $telegramService->sendMessage(
+                $chatId,
+                $message,
+                ['parse_mode' => 'HTML']
+            );
+        } catch (\Exception $e) {
+            try {
+                Log::error('Failed to send status command response', [
+                    'chat_id' => $chatId,
+                    'user_id' => $userId,
+                    'error' => $e->getMessage(),
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
+        }
+    }
+
+    /**
+     * Обработка команды /status в личном чате (общая статистика по всем чатам)
+     */
+    private function handleStatusCommandPrivate(int $chatId, ?array $from): void
+    {
+        if (!$from) {
+            return;
+        }
+
+        $userId = $from['id'] ?? 0;
+        $username = $from['username'] ?? null;
+        $firstName = $from['first_name'] ?? 'Пользователь';
+
+        // Получить общую статистику пользователя по всем чатам
+        $totalStats = \App\Models\UserScore::where('user_id', $userId)
+            ->selectRaw('SUM(total_points) as total_points, SUM(correct_answers) as correct_answers, SUM(total_answers) as total_answers, SUM(first_place_count) as first_place_count, COUNT(*) as chats_count')
+            ->first();
+
+        // Формировать сообщение
+        $telegramService = new \App\Services\TelegramService();
+        
+        if ($totalStats && $totalStats->total_points > 0) {
+            $accuracy = $totalStats->total_answers > 0 
+                ? round(($totalStats->correct_answers / $totalStats->total_answers) * 100, 1)
+                : 0;
+            
+            $message = "📊 <b>Ваша общая статистика</b>\n\n";
+            $message .= "👤 <b>Пользователь:</b> " . ($firstName ?? $username ?? "User {$userId}") . "\n";
+            $message .= "💬 <b>Активных чатов:</b> " . number_format($totalStats->chats_count) . "\n";
+            $message .= "🏆 <b>Всего очков:</b> " . number_format($totalStats->total_points) . "\n";
+            $message .= "✅ <b>Правильных ответов:</b> " . number_format($totalStats->correct_answers) . "\n";
+            $message .= "📝 <b>Всего ответов:</b> " . number_format($totalStats->total_answers) . "\n";
+            $message .= "🎯 <b>Точность:</b> {$accuracy}%\n";
+            $message .= "🥇 <b>Первых мест:</b> " . number_format($totalStats->first_place_count) . "\n";
+        } else {
+            $message = "📊 <b>Ваша общая статистика</b>\n\n";
+            $message .= "👤 <b>Пользователь:</b> " . ($firstName ?? $username ?? "User {$userId}") . "\n";
+            $message .= "❌ <b>У вас пока нет статистики.</b>\n\n";
+            $message .= "💡 <i>Добавьте бота в группу и участвуйте в викторинах, чтобы заработать очки!</i>";
+        }
+
+        try {
+            $telegramService->sendMessage(
+                $chatId,
+                $message,
+                ['parse_mode' => 'HTML']
+            );
+        } catch (\Exception $e) {
+            try {
+                Log::error('Failed to send status command response (private)', [
+                    'chat_id' => $chatId,
+                    'user_id' => $userId,
+                    'error' => $e->getMessage(),
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
+        }
     }
 }
