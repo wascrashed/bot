@@ -296,12 +296,15 @@ class TelegramWebhookController extends Controller
                 ]);
 
                 try {
+                    // Передать message_id для reply-уведомления
+                    $messageId = $message['message_id'] ?? null;
                     $this->quizService->processAnswer(
                         $activeQuiz->id,
                         $userId,
                         $username,
                         $firstName,
-                        $text
+                        $text,
+                        $messageId
                     );
                     Log::info('Answer processed successfully', [
                         'active_quiz_id' => $activeQuiz->id,

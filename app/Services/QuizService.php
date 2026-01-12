@@ -518,9 +518,9 @@ class QuizService
     /**
      * Обработать текстовый ответ пользователя
      */
-    public function processAnswer(int $activeQuizId, int $userId, string $username, string $firstName, string $answerText): void
+    public function processAnswer(int $activeQuizId, int $userId, string $username, string $firstName, string $answerText, ?int $messageId = null): void
     {
-        $this->processAnswerInternal($activeQuizId, $userId, $username, $firstName, $answerText, null, null);
+        $this->processAnswerInternal($activeQuizId, $userId, $username, $firstName, $answerText, null, null, $messageId);
     }
 
     /**
@@ -534,7 +534,7 @@ class QuizService
     /**
      * Внутренний метод обработки ответа
      */
-    private function processAnswerInternal(int $activeQuizId, int $userId, string $username, string $firstName, string $answerText, ?string $callbackData = null, ?string $callbackQueryId = null): void
+    private function processAnswerInternal(int $activeQuizId, int $userId, string $username, string $firstName, string $answerText, ?string $callbackData = null, ?string $callbackQueryId = null, ?int $messageId = null): void
     {
         Log::info('processAnswerInternal called', [
             'active_quiz_id' => $activeQuizId,
@@ -685,6 +685,32 @@ class QuizService
                 'is_correct' => $isCorrect,
                 'result_id' => $result->id,
             ]);
+
+            // Отправить мини-уведомление пользователю (reply на его сообщение)
+            if ($messageId) {
+                try {
+                    $emoji = $isCorrect ? '✅' : '❌';
+                    $message = $isCorrect 
+                        ? "{$emoji} Правильно!" 
+                        : "{$emoji} Неправильно";
+                    
+                    // Отправить reply на сообщение пользователя (короткое уведомление)
+                    $this->telegram->sendMessage(
+                        $activeQuiz->chat_id,
+                        $message,
+                        [
+                            'parse_mode' => 'HTML',
+                            'reply_to_message_id' => $messageId,
+                            'disable_notification' => false, // Показать уведомление
+                        ]
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('Failed to send answer notification', [
+                        'user_id' => $userId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             // Если это правильный ответ и первый в викторине
             if ($isCorrect) {
