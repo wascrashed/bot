@@ -430,7 +430,15 @@ class TelegramService
         // Сначала попробовать из конфига
         $chatId = config('telegram.owner_chat_id');
         if ($chatId) {
-            return (int) $chatId;
+            // Проверить, что это число, а не username
+            if (is_numeric($chatId)) {
+                return (int) $chatId;
+            } else {
+                Log::warning('TELEGRAM_OWNER_CHAT_ID должен быть числом, а не username', [
+                    'provided' => $chatId,
+                    'hint' => 'Используйте TELEGRAM_OWNER_USERNAME для username, а TELEGRAM_OWNER_CHAT_ID для числового ID',
+                ]);
+            }
         }
         
         // Затем из кеша (если был сохранен при контакте)
@@ -453,7 +461,8 @@ class TelegramService
             $ownerUsername = config('telegram.owner_username');
             Log::warning('Owner chat_id not found', [
                 'username' => $ownerUsername,
-                'hint' => 'Добавьте TELEGRAM_OWNER_CHAT_ID в .env или напишите боту для автоматического сохранения',
+                'hint' => 'Добавьте TELEGRAM_OWNER_CHAT_ID (число) в .env или напишите боту личное сообщение для автоматического сохранения',
+                'how_to_get' => 'Напишите боту @userinfobot чтобы узнать свой chat_id, или просто напишите боту любое сообщение',
             ]);
             return false;
         }
