@@ -6,7 +6,8 @@ use App\Http\Controllers\Admin\{
     DashboardController,
     QuestionController,
     StatisticsController,
-    ChatController
+    ChatController,
+    LogController
 };
 use Illuminate\Support\Facades\Route;
 
@@ -38,5 +39,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
         Route::get('/chats/{chatId}', [ChatController::class, 'show'])->name('chats.show');
         Route::post('/chats/{chatId}/toggle-active', [ChatController::class, 'toggleActive'])->name('chats.toggle-active');
+
+        // Логи
+        Route::get('/logs', [LogController::class, 'index'])->name('logs.index');
+        Route::post('/logs/clear', [LogController::class, 'clear'])->name('logs.clear');
     });
 });

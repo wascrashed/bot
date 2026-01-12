@@ -568,7 +568,8 @@ class QuizService
      */
     private function parseTextAnswer(string $answerText, Question $question, ActiveQuiz $activeQuiz): ?string
     {
-        $answerText = mb_strtolower(trim($answerText));
+        $originalAnswerText = trim($answerText);
+        $answerText = mb_strtolower($originalAnswerText);
 
         // Для вопросов Верно/Неверно
         if ($question->question_type === Question::TYPE_TRUE_FALSE) {
@@ -605,9 +606,11 @@ class QuizService
             }
         }
 
-        // Для текстовых вопросов - вернуть сам текст ответа
+        // Для текстовых вопросов - вернуть оригинальный текст ответа (не в нижнем регистре)
         if ($question->question_type === Question::TYPE_TEXT || $question->question_type === Question::TYPE_IMAGE) {
-            return $answerText;
+            // Вернуть оригинальный текст ответа пользователя (до преобразования в нижний регистр)
+            // checkAnswer сам сделает нормализацию для сравнения
+            return $originalAnswerText;
         }
 
         return null;

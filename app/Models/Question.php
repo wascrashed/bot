@@ -89,9 +89,19 @@ class Question extends Model
             return $answerNormalized === $correctNormalized;
         }
         
-        // Для текстовых вопросов - частичное совпадение
+        // Для текстовых вопросов - частичное совпадение (без учета регистра)
         if ($this->question_type === self::TYPE_TEXT || $this->question_type === self::TYPE_IMAGE) {
-            return mb_strpos($correct, $answer) !== false || mb_strpos($answer, $correct) !== false;
+            // Проверяем оба направления поиска подстроки
+            $correctLower = mb_strtolower($correct);
+            $answerLower = mb_strtolower($answer);
+            
+            // Точное совпадение (после нормализации)
+            if ($answerLower === $correctLower) {
+                return true;
+            }
+            
+            // Частичное совпадение (одна строка содержит другую)
+            return mb_strpos($correctLower, $answerLower) !== false || mb_strpos($answerLower, $correctLower) !== false;
         }
         
         // Точное совпадение для остальных типов
