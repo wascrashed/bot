@@ -398,4 +398,75 @@ class TelegramService
     {
         return $this->makeRequest('getMe', []);
     }
+
+    /**
+     * Сохранить chat_id владельца (вызывается при первом контакте)
+     */
+    public function saveOwnerChatId(int $chatId, string $username): void
+    {
+        $ownerUsername = config('telegram.owner_username');
+        if (!$ownerUsername) {
+            return;
+        }
+        
+        $ownerUsername = ltrim($ownerUsername, '@');
+        $username = ltrim($username, '@');
+        
+        if (strtolower($username) === strtolower($ownerUsername)) {
+            // Сохранить в кеш
+            Cache::forever("telegram_owner_chat_id", $chatId);
+            Log::info('Owner chat_id saved', [
+                'chat_id' => $chatId,
+                'username' => $username,
+            ]);
+        }
+    }
+
+    /**
+     * Получить chat_id владельца бота
+     */
+    private function getOwnerChatId(): ?int
+    {
+        // Сначала попробовать из конфига
+        $chatId = config('telegram.owner_chat_id');
+        if ($chatId) {
+            return (int) $chatId;
+        }
+        
+        // Затем из кеша (если был сохранен при контакте)
+        $cachedChatId = Cache::get("telegram_owner_chat_id");
+        if ($cachedChatId) {
+            return (int) $cachedChatId;
+        }
+        
+        return null;
+    }
+
+    /**
+     * Отправить сообщение владельцу бота
+     */
+    public function sendMessageToOwner(string $message): bool
+    {
+        $chatId = $this->getOwnerChatId();
+        
+        if (!$chatId) {
+            $ownerUsername = config('telegram.owner_username');
+            Log::warning('Owner chat_id not found', [
+                'username' => $ownerUsername,
+                'hint' => 'Добавьте TELEGRAM_OWNER_CHAT_ID в .env или напишите боту для автоматического сохранения',
+            ]);
+            return false;
+        }
+        
+        try {
+            $result = $this->sendMessage($chatId, $message);
+            return $result !== null;
+        } catch (\Exception $e) {
+            Log::error('Failed to send message to owner', [
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
 }

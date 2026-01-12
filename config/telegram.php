@@ -8,4 +8,8 @@ return [
     // ID тестового чата для загрузки изображений и получения file_id (опционально)
     // Можно использовать ваш личный чат с ботом
     'test_chat_id' => env('TELEGRAM_TEST_CHAT_ID', null),
+    // Username владельца бота для отправки уведомлений об ошибках
+    'owner_username' => env('TELEGRAM_OWNER_USERNAME', 'ghettoyakub'),
+    // Chat ID владельца бота (можно получить, написав боту @userinfobot или сохранив при первом контакте)
+    'owner_chat_id' => env('TELEGRAM_OWNER_CHAT_ID', null),
 ];

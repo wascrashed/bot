@@ -37,6 +37,7 @@ class QuizService
             if (!$this->telegram->isBotAdmin($chatId)) {
                 Log::warning("Bot is not admin in chat {$chatId}");
                 $this->analytics->logError("Bot not admin in chat {$chatId}");
+                $this->sendErrorNotification($chatId, "⚠️ Не удалось запустить викторину: бот не является администратором группы. Пожалуйста, предоставьте боту права администратора.");
                 return false;
             }
 
@@ -69,6 +70,8 @@ class QuizService
             if (!$question) {
                 Log::warning("No questions found in database");
                 $this->analytics->logError("No questions in database");
+                $this->sendErrorNotification($chatId, "⚠️ Не удалось запустить викторину: в базе данных нет вопросов. Обратитесь к администратору.");
+                $this->notifyOwnerAboutError($chatId, "Нет вопросов в базе", "В базе данных отсутствуют вопросы для викторины");
                 return false;
             }
 
@@ -123,6 +126,8 @@ class QuizService
             // Если не удалось отправить, деактивировать викторину
             $activeQuiz->update(['is_active' => false]);
             $this->analytics->logError("Failed to send quiz in chat {$chatId}");
+            $this->sendErrorNotification($chatId, "⚠️ Не удалось запустить викторину: ошибка при отправке сообщения. Попробуйте позже.");
+            $this->notifyOwnerAboutError($chatId, "Ошибка отправки", "Не удалось отправить сообщение с викториной в группу");
             return false;
 
         } catch (\Exception $e) {
@@ -132,7 +137,49 @@ class QuizService
                 'trace' => $e->getTraceAsString(),
             ]);
             $this->analytics->logError("Start quiz error: " . $e->getMessage());
+            $this->sendErrorNotification($chatId, "⚠️ Не удалось запустить викторину: произошла ошибка. Попробуйте позже.");
+            $this->notifyOwnerAboutError($chatId, "Исключение", $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Отправить уведомление об ошибке в группу
+     */
+    private function sendErrorNotification(int $chatId, string $message): void
+    {
+        try {
+            $this->telegram->sendMessage($chatId, $message);
+        } catch (\Exception $e) {
+            // Если не удалось отправить уведомление, просто логируем
+            Log::warning('Failed to send error notification to chat', [
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Отправить уведомление владельцу об ошибке на стороне бота
+     */
+    private function notifyOwnerAboutError(int $chatId, string $errorType, string $errorMessage): void
+    {
+        try {
+            $chatInfo = $this->telegram->getChat($chatId);
+            $chatTitle = $chatInfo['title'] ?? "Chat {$chatId}";
+            
+            $message = "🔴 <b>Ошибка при запуске викторины</b>\n\n";
+            $message .= "📊 <b>Чат:</b> {$chatTitle} (ID: {$chatId})\n";
+            $message .= "⚠️ <b>Тип ошибки:</b> {$errorType}\n";
+            $message .= "📝 <b>Описание:</b> {$errorMessage}\n";
+            $message .= "\n⏰ <b>Время:</b> " . now()->format('d.m.Y H:i:s');
+            
+            $this->telegram->sendMessageToOwner($message);
+        } catch (\Exception $e) {
+            Log::warning('Failed to notify owner about error', [
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

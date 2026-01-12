@@ -58,8 +58,22 @@ class TelegramWebhookController extends Controller
         }
 
         $chatType = $chat['type'] ?? null;
+        
+        // Обработать личные сообщения для сохранения chat_id владельца
+        if ($chatType === 'private') {
+            $from = $message['from'] ?? null;
+            if ($from && !($from['is_bot'] ?? false)) {
+                $username = $from['username'] ?? null;
+                if ($username) {
+                    $telegramService = new \App\Services\TelegramService();
+                    $telegramService->saveOwnerChatId($chat['id'], $username);
+                }
+            }
+            return; // Не обрабатываем личные сообщения дальше
+        }
+        
         if (!in_array($chatType, ['group', 'supergroup'])) {
-            return; // Игнорируем личные сообщения и каналы
+            return; // Игнорируем каналы
         }
 
         $chatId = $chat['id'];
