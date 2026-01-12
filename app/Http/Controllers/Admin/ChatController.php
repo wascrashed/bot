@@ -127,7 +127,7 @@ class ChatController extends Controller
     }
 
     /**
-     * Delete chat from database
+     * Delete chat from database (only statistics, keeps history)
      */
     public function destroy($chatId)
     {
@@ -147,6 +147,47 @@ class ChatController extends Controller
                 ->with('success', "Чат \"{$chatTitle}\" успешно удален из базы данных.");
         } catch (\Exception $e) {
             return back()->with('error', 'Ошибка при удалении чата: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Полностью очистить все данные чата (статистика, викторины, результаты, очки)
+     */
+    public function clearAll($chatId)
+    {
+        try {
+            $chat = ChatStatistics::where('chat_id', $chatId)->firstOrFail();
+            $chatTitle = $chat->chat_title ?? "Chat {$chatId}";
+            
+            \Illuminate\Support\Facades\DB::beginTransaction();
+
+            // 1. Получить ID всех викторин этого чата ПЕРЕД удалением
+            $quizIds = \App\Models\ActiveQuiz::where('chat_id', $chatId)->pluck('id');
+            
+            // 2. Удалить результаты викторин (связаны через active_quiz_id)
+            if ($quizIds->isNotEmpty()) {
+                \App\Models\QuizResult::whereIn('active_quiz_id', $quizIds)->delete();
+            }
+            
+            // 3. Удалить активные викторины
+            \App\Models\ActiveQuiz::where('chat_id', $chatId)->delete();
+            
+            // 4. Удалить очки пользователей
+            \App\Models\UserScore::where('chat_id', $chatId)->delete();
+            
+            // 5. Удалить историю вопросов
+            \App\Models\QuestionHistory::where('chat_id', $chatId)->delete();
+            
+            // 6. Удалить статистику чата
+            $chat->delete();
+
+            \Illuminate\Support\Facades\DB::commit();
+            
+            return redirect()->route('admin.chats.index')
+                ->with('success', "Все данные чата \"{$chatTitle}\" полностью удалены. Чат можно зарегистрировать заново.");
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\DB::rollBack();
+            return back()->with('error', 'Ошибка при удалении данных: ' . $e->getMessage());
         }
     }
 }

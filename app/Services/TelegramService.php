@@ -400,8 +400,9 @@ class TelegramService
 
     /**
      * Получить информацию о чате
+     * @param int|string $chatId - ID чата (число) или username (строка, например: @username)
      */
-    public function getChat(int $chatId): ?array
+    public function getChat($chatId): ?array
     {
         $params = [
             'chat_id' => $chatId,

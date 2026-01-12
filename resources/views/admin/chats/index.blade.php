@@ -60,10 +60,14 @@
                                 {{ $chat->is_active ? 'Деактивировать' : 'Активировать' }}
                             </button>
                         </form>
-                        <form action="{{ route('admin.chats.destroy', $chat->chat_id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Вы уверены, что хотите удалить этот чат из базы данных? Это действие нельзя отменить.');">
+                        <form action="{{ route('admin.chats.clear-all', $chat->chat_id) }}" method="POST" style="display: inline;" onsubmit="return confirm('⚠️ ВНИМАНИЕ: Это удалит ВСЕ данные чата (статистика, викторины, результаты, очки). Это действие необратимо!\n\nВы уверены?');">
+                            @csrf
+                            <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;" title="Полностью удалить все данные чата">🗑️ Удалить всё</button>
+                        </form>
+                        <form action="{{ route('admin.chats.destroy', $chat->chat_id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Удалить только статистику чата? История викторин и очки сохранятся.');">
                             @csrf
                             @method('DELETE')
-                            <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;">🗑️ Удалить</button>
+                            <button type="submit" class="btn btn-warning" style="padding: 5px 10px; font-size: 12px;" title="Удалить только статистику">📊 Удалить статистику</button>
                         </form>
                     </td>
                 </tr>
