@@ -71,14 +71,28 @@ class TelegramService
                     ]);
                 }
 
-                $result = json_decode($response->getBody()->getContents(), true);
+                $body = $response->getBody()->getContents();
+                $result = json_decode($body, true);
                 
-                if ($result['ok']) {
-                    return $result['result'];
+                // Проверка на ошибку декодирования JSON
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    Log::error('Telegram API JSON decode error', [
+                        'method' => $method,
+                        'body' => $body,
+                        'json_error' => json_last_error_msg(),
+                    ]);
+                    if ($attempt < $retries - 1) {
+                        continue;
+                    }
+                    return null;
+                }
+                
+                if (is_array($result) && isset($result['ok']) && $result['ok']) {
+                    return $result['result'] ?? [];
                 }
 
                 // Обработка ошибки 429 (Too Many Requests)
-                if (isset($result['error_code']) && $result['error_code'] == 429) {
+                if (is_array($result) && isset($result['error_code']) && $result['error_code'] == 429) {
                     $retryAfter = $result['parameters']['retry_after'] ?? (2 ** $attempt);
                     Log::warning("Rate limit exceeded", [
                         'method' => $method,

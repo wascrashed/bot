@@ -14,13 +14,13 @@ class Kernel extends ConsoleKernel
     {
         // Запускать викторину каждые 6 минут (10 раз в час)
         $schedule->command('quiz:start-random')
-            ->everySixMinutes()
+            ->cron('*/6 * * * *')
             ->withoutOverlapping()
             ->runInBackground();
         
         // Обновлять аналитику каждые 5 минут
         $schedule->command('analytics:update')
-            ->everyFiveMinutes()
+            ->cron('*/5 * * * *')
             ->withoutOverlapping();
         
         // Очищать старые записи истории вопросов (старше 48 часов)
