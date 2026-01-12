@@ -36,6 +36,11 @@ class Kernel extends ConsoleKernel
         $schedule->command('quiz:finish-stuck')
             ->everyMinute()
             ->withoutOverlapping();
+        
+        // Очищать старые завершенные викторины (старше 7 дней) - каждый день в 3:00
+        $schedule->command('quiz:clean-old --days=7 --force')
+            ->dailyAt('03:00')
+            ->withoutOverlapping();
     }
 
     /**
