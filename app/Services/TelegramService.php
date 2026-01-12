@@ -87,8 +87,10 @@ class TelegramService
                     return null;
                 }
                 
-                if (is_array($result) && isset($result['ok']) && $result['ok']) {
-                    return $result['result'] ?? [];
+                if (is_array($result) && isset($result['ok']) && $result['ok'] === true) {
+                    $responseResult = $result['result'] ?? [];
+                    // Убеждаемся, что возвращаем массив, а не bool
+                    return is_array($responseResult) ? $responseResult : [];
                 }
 
                 // Обработка ошибки 429 (Too Many Requests)
