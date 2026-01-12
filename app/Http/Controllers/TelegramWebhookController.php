@@ -411,10 +411,6 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        // ВАЖНО: НЕ отвечаем на callback query здесь!
-        // Ответ будет отправлен в QuizService после быстрой проверки ответа
-        // Это позволит показать пользователю результат сразу
-
         // Логировать обработку callback
         try {
             Log::info('Processing callback answer', [
@@ -436,7 +432,7 @@ class TelegramWebhookController extends Controller
             $username,
             $firstName,
             $data, // callback_data для парсинга ответа
-            $callbackQueryId, // callback_query_id для ответа на callback (для уведомления с результатом)
+            $callbackQueryId, // callback_query_id для ответа на callback
             $messageId, // message_id для уведомлений
             $chatId // chat_id для отправки сообщений в группу
         );

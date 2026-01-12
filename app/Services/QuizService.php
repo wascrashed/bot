@@ -745,20 +745,19 @@ class QuizService
             }
 
             // ВАЖНО: Для callback query отправляем уведомление СРАЗУ с результатом
-            // Это нужно сделать ДО сохранения в БД, чтобы пользователь быстро увидел результат
+            // Это нужно сделать ДО сохранения в БД, чтобы убрать индикатор загрузки и показать результат
             if ($callbackQueryId) {
                 $callbackText = $isCorrect 
                     ? "✅ Ваш ответ зарегистрирован! Правильно!"
                     : "❌ Ваш ответ зарегистрирован. Неправильно.";
                 try {
-                    // Отправляем уведомление с результатом
-                    // Это заменяет пустой ответ, который был отправлен в контроллере
-                    // Но если уже ответили пустым, это может не сработать
+                    // Отправляем уведомление с результатом СРАЗУ после проверки
+                    // Это уберет индикатор загрузки и покажет результат пользователю
                     $this->telegram->answerCallbackQuery($callbackQueryId, $callbackText, true);
                 } catch (\Exception $e) {
-                    // Игнорируем, если уже ответили или callback истек
+                    // Критическая ошибка - не удалось отправить уведомление
                     try {
-                        Log::debug('Callback query notification failed (may already be answered)', [
+                        Log::error('Failed to send callback notification', [
                             'callback_query_id' => $callbackQueryId,
                             'error' => $e->getMessage(),
                         ]);
