@@ -149,10 +149,40 @@ class TelegramWebhookController extends Controller
         ]);
 
         // Найти активную викторину для этого чата
-        $activeQuiz = ActiveQuiz::where('chat_id', $chatId)
+        // Сначала найти все активные викторины для этого чата
+        $activeQuizzes = ActiveQuiz::where('chat_id', $chatId)
             ->where('is_active', true)
-            ->where('expires_at', '>', now())
-            ->first();
+            ->get();
+        
+        $activeQuiz = null;
+        $now = \Carbon\Carbon::now();
+        
+        foreach ($activeQuizzes as $quiz) {
+            // КРИТИЧЕСКАЯ ПРОВЕРКА: если expires_at раньше started_at, исправить
+            if ($quiz->expires_at->lessThan($quiz->started_at)) {
+                Log::error('CRITICAL: Found quiz with invalid expires_at, fixing...', [
+                    'active_quiz_id' => $quiz->id,
+                    'started_at' => $quiz->started_at->format('Y-m-d H:i:s'),
+                    'expires_at_before' => $quiz->expires_at->format('Y-m-d H:i:s'),
+                ]);
+                
+                // Пересчитать expires_at правильно
+                $correctExpiresAt = $quiz->started_at->copy()->addSeconds(20);
+                $quiz->update(['expires_at' => $correctExpiresAt]);
+                $quiz->refresh();
+                
+                Log::info('Fixed quiz expires_at', [
+                    'active_quiz_id' => $quiz->id,
+                    'expires_at_after' => $quiz->expires_at->format('Y-m-d H:i:s'),
+                ]);
+            }
+            
+            // Проверить, что викторина еще не истекла
+            if ($quiz->expires_at->greaterThan($now)) {
+                $activeQuiz = $quiz;
+                break; // Нашли активную викторину
+            }
+        }
         
         // Логировать результат поиска викторины
         if ($activeQuiz) {

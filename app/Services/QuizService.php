@@ -110,16 +110,35 @@ class QuizService
 
             // Создать активную викторину
             $startedAt = Carbon::now();
-            $expiresAt = $startedAt->copy()->addSeconds(20); // 20 секунд на ответ
+            // Использовать clone вместо copy() и явно установить время
+            $expiresAt = clone $startedAt;
+            $expiresAt->addSeconds(20); // 20 секунд на ответ
+            
+            // КРИТИЧЕСКАЯ ПРОВЕРКА: убедиться, что expires_at позже started_at
+            if ($expiresAt->lessThanOrEqualTo($startedAt)) {
+                Log::error('CRITICAL: expires_at calculation error!', [
+                    'started_at' => $startedAt->format('Y-m-d H:i:s'),
+                    'expires_at_before_fix' => $expiresAt->format('Y-m-d H:i:s'),
+                ]);
+                // Пересчитать правильно
+                $expiresAt = $startedAt->copy();
+                $expiresAt->addSeconds(20);
+                Log::info('Recalculated expires_at', [
+                    'expires_at_after_fix' => $expiresAt->format('Y-m-d H:i:s'),
+                ]);
+            }
             $answersOrder = $this->prepareAnswersForQuestion($question);
 
-            // Логировать создание викторины
+            // Логировать создание викторины с временем
             Log::info('Creating active quiz', [
                 'chat_id' => $chatId,
                 'question_id' => $question->id,
                 'question_type' => $question->question_type,
                 'answers_order' => $answersOrder,
                 'answers_count' => count($answersOrder),
+                'started_at_raw' => $startedAt->format('Y-m-d H:i:s'),
+                'expires_at_raw' => $expiresAt->format('Y-m-d H:i:s'),
+                'timezone' => $startedAt->timezone->getName(),
             ]);
 
             $activeQuiz = ActiveQuiz::create([
@@ -132,12 +151,35 @@ class QuizService
                 'is_active' => true,
             ]);
             
-            // Проверить, что answers_order сохранился
+            // Проверить, что данные сохранились правильно
             $activeQuiz->refresh();
             Log::info('Active quiz created', [
                 'active_quiz_id' => $activeQuiz->id,
                 'saved_answers_order' => $activeQuiz->answers_order,
+                'saved_started_at' => $activeQuiz->started_at->format('Y-m-d H:i:s'),
+                'saved_expires_at' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
+                'now' => Carbon::now()->format('Y-m-d H:i:s'),
+                'is_expired_check' => $activeQuiz->isExpired(),
             ]);
+            
+            // КРИТИЧЕСКАЯ ПРОВЕРКА: если expires_at раньше started_at, исправить
+            if ($activeQuiz->expires_at->lessThan($activeQuiz->started_at)) {
+                Log::error('CRITICAL: expires_at is before started_at! Fixing...', [
+                    'active_quiz_id' => $activeQuiz->id,
+                    'started_at' => $activeQuiz->started_at->format('Y-m-d H:i:s'),
+                    'expires_at_before' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
+                ]);
+                
+                // Пересчитать expires_at правильно
+                $correctExpiresAt = $activeQuiz->started_at->copy()->addSeconds(20);
+                $activeQuiz->update(['expires_at' => $correctExpiresAt]);
+                $activeQuiz->refresh();
+                
+                Log::info('Fixed expires_at', [
+                    'active_quiz_id' => $activeQuiz->id,
+                    'expires_at_after' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
+                ]);
+            }
 
             // Сохранить историю вопроса
             QuestionHistory::create([
