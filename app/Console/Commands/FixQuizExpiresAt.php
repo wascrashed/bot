@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use App\Models\ActiveQuiz;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class FixQuizExpiresAt extends Command
 {
@@ -23,18 +24,26 @@ class FixQuizExpiresAt extends Command
         $checked = 0;
         foreach ($quizzes as $quiz) {
             $checked++;
-            // Убедиться, что даты в UTC
-            $startedAt = Carbon::parse($quiz->started_at)->setTimezone('UTC');
-            $expiresAt = Carbon::parse($quiz->expires_at)->setTimezone('UTC');
+            
+            // Прочитать сырые значения из БД напрямую для точности
+            $rawData = DB::table('active_quizzes')
+                ->where('id', $quiz->id)
+                ->first(['started_at', 'expires_at', 'is_active']);
+            
+            // Создать Carbon объекты из сырых строк, явно указав UTC
+            $startedAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->started_at, 'UTC');
+            $expiresAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->expires_at, 'UTC');
             
             // Проверить, что expires_at раньше или равно started_at
             if ($expiresAt->lessThanOrEqualTo($startedAt)) {
-                $status = $quiz->is_active ? '🟢 Активна' : '🔴 Завершена';
+                $status = $rawData->is_active ? '🟢 Активна' : '🔴 Завершена';
                 $this->warn("Викторина #{$quiz->id} ({$status}): expires_at ({$expiresAt->format('Y-m-d H:i:s T')}) раньше или равно started_at ({$startedAt->format('Y-m-d H:i:s T')})");
                 
                 // Пересчитать правильно
                 $correctExpiresAt = $startedAt->copy()->addSeconds(20);
-                $quiz->update(['expires_at' => $correctExpiresAt]);
+                DB::table('active_quizzes')
+                    ->where('id', $quiz->id)
+                    ->update(['expires_at' => $correctExpiresAt->format('Y-m-d H:i:s')]);
                 
                 $this->info("  ✅ Исправлено: expires_at = {$correctExpiresAt->format('Y-m-d H:i:s T')}");
                 $fixed++;

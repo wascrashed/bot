@@ -6,6 +6,8 @@ use App\Models\ActiveQuiz;
 use App\Services\QuizService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class TelegramWebhookController extends Controller
 {
@@ -165,57 +167,67 @@ class TelegramWebhookController extends Controller
         $now = \Carbon\Carbon::now('UTC');
         
         foreach ($activeQuizzes as $quiz) {
-            // Убедиться, что даты в UTC
-            $quiz->started_at = Carbon::parse($quiz->started_at)->setTimezone('UTC');
-            $quiz->expires_at = Carbon::parse($quiz->expires_at)->setTimezone('UTC');
+            // Прочитать сырые значения из БД напрямую для точности
+            $rawData = DB::table('active_quizzes')
+                ->where('id', $quiz->id)
+                ->first(['started_at', 'expires_at']);
+            
+            // Создать Carbon объекты из сырых строк, явно указав UTC
+            $startedAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->started_at, 'UTC');
+            $expiresAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->expires_at, 'UTC');
             
             // КРИТИЧЕСКАЯ ПРОВЕРКА: если expires_at раньше started_at, исправить
-            if ($quiz->expires_at->lessThanOrEqualTo($quiz->started_at)) {
+            if ($expiresAt->lessThanOrEqualTo($startedAt)) {
                 Log::error('CRITICAL: Found quiz with invalid expires_at, fixing...', [
                     'active_quiz_id' => $quiz->id,
-                    'started_at' => $quiz->started_at->format('Y-m-d H:i:s T'),
-                    'expires_at_before' => $quiz->expires_at->format('Y-m-d H:i:s T'),
+                    'started_at' => $startedAt->format('Y-m-d H:i:s T'),
+                    'expires_at_before' => $expiresAt->format('Y-m-d H:i:s T'),
                 ]);
                 
                 // Пересчитать expires_at правильно
-                $correctExpiresAt = $quiz->started_at->copy()->addSeconds(20);
-                $quiz->update(['expires_at' => $correctExpiresAt]);
-                $quiz->refresh();
+                $correctExpiresAt = $startedAt->copy()->addSeconds(20);
+                DB::table('active_quizzes')
+                    ->where('id', $quiz->id)
+                    ->update(['expires_at' => $correctExpiresAt->format('Y-m-d H:i:s')]);
                 
-                // Снова установить часовой пояс
-                $quiz->started_at = Carbon::parse($quiz->started_at)->setTimezone('UTC');
-                $quiz->expires_at = Carbon::parse($quiz->expires_at)->setTimezone('UTC');
+                // Перечитать из БД
+                $rawData = DB::table('active_quizzes')
+                    ->where('id', $quiz->id)
+                    ->first(['started_at', 'expires_at']);
+                $startedAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->started_at, 'UTC');
+                $expiresAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->expires_at, 'UTC');
                 
                 Log::info('Fixed quiz expires_at', [
                     'active_quiz_id' => $quiz->id,
-                    'expires_at_after' => $quiz->expires_at->format('Y-m-d H:i:s T'),
-                    'time_diff_seconds' => $quiz->expires_at->diffInSeconds($quiz->started_at),
+                    'expires_at_after' => $expiresAt->format('Y-m-d H:i:s T'),
+                    'time_diff_seconds' => $expiresAt->diffInSeconds($startedAt),
                 ]);
             }
             
             // Проверить, что викторина еще не истекла
             // Использовать прямое сравнение Carbon объектов для правильной работы с часовыми поясами
-            $expiresAt = $quiz->expires_at;
             $isNotExpired = $expiresAt->isFuture();
             
             // Логировать для диагностики (используем info вместо debug для гарантии записи)
             Log::info('Checking quiz expiration', [
                 'active_quiz_id' => $quiz->id,
-                'started_at' => $quiz->started_at->format('Y-m-d H:i:s T'),
+                'started_at' => $startedAt->format('Y-m-d H:i:s T'),
                 'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
                 'now' => $now->format('Y-m-d H:i:s T'),
                 'is_future' => $isNotExpired,
-                'is_expired_method' => $quiz->isExpired(),
             ]);
             
             if ($isNotExpired) {
+                // Обновить объект quiz для дальнейшего использования
+                $quiz->started_at = $startedAt;
+                $quiz->expires_at = $expiresAt;
                 $activeQuiz = $quiz;
                 Log::info('Active quiz found for message', [
                     'active_quiz_id' => $quiz->id,
                     'chat_id' => $chatId,
-                    'started_at' => $quiz->started_at->format('Y-m-d H:i:s'),
-                    'expires_at' => $quiz->expires_at->format('Y-m-d H:i:s'),
-                    'now' => now()->format('Y-m-d H:i:s'),
+                    'started_at' => $startedAt->format('Y-m-d H:i:s'),
+                    'expires_at' => $expiresAt->format('Y-m-d H:i:s'),
+                    'now' => $now->format('Y-m-d H:i:s'),
                 ]);
                 break; // Нашли активную викторину
             }

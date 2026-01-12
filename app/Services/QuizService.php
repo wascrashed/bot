@@ -13,6 +13,7 @@ use App\Services\TelegramService;
 use App\Services\AnalyticsService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class QuizService
 {
@@ -150,22 +151,53 @@ class QuizService
                 'timezone' => $startedAt->timezone->getName(),
             ]);
 
+            // Сохранить время в UTC, используя явное форматирование для гарантии
             $activeQuiz = ActiveQuiz::create([
                 'chat_id' => $chatId,
                 'chat_type' => $chatType,
                 'question_id' => $question->id,
                 'answers_order' => $answersOrder,
-                'started_at' => $startedAt,
-                'expires_at' => $expiresAt,
+                // Явно форматировать время в UTC для сохранения в БД
+                'started_at' => $startedAt->format('Y-m-d H:i:s'),
+                'expires_at' => $expiresAt->format('Y-m-d H:i:s'),
                 'is_active' => true,
             ]);
             
             // Проверить, что данные сохранились правильно
             $activeQuiz->refresh();
             
-            // ЯВНО перезагрузить с правильным часовым поясом
-            $activeQuiz->started_at = Carbon::parse($activeQuiz->started_at)->setTimezone('UTC');
-            $activeQuiz->expires_at = Carbon::parse($activeQuiz->expires_at)->setTimezone('UTC');
+            // Прочитать сырые значения из БД напрямую
+            $rawData = DB::table('active_quizzes')
+                ->where('id', $activeQuiz->id)
+                ->first(['started_at', 'expires_at']);
+            
+            // Создать Carbon объекты из сырых строк, явно указав UTC
+            $savedStartedAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->started_at, 'UTC');
+            $savedExpiresAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->expires_at, 'UTC');
+            
+            // Если время неправильное, обновить
+            if ($savedExpiresAt->lessThanOrEqualTo($savedStartedAt)) {
+                Log::warning('Detected invalid expires_at after save, fixing...', [
+                    'active_quiz_id' => $activeQuiz->id,
+                    'started_at_raw' => $rawData->started_at,
+                    'expires_at_raw' => $rawData->expires_at,
+                ]);
+                
+                $correctExpiresAt = $savedStartedAt->copy()->addSeconds(20);
+                DB::table('active_quizzes')
+                    ->where('id', $activeQuiz->id)
+                    ->update(['expires_at' => $correctExpiresAt->format('Y-m-d H:i:s')]);
+                
+                $activeQuiz->refresh();
+                $rawData = DB::table('active_quizzes')
+                    ->where('id', $activeQuiz->id)
+                    ->first(['started_at', 'expires_at']);
+                $savedExpiresAt = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->expires_at, 'UTC');
+            }
+            
+            // Использовать правильные значения для логирования
+            $activeQuiz->started_at = $savedStartedAt;
+            $activeQuiz->expires_at = $savedExpiresAt;
             
             Log::info('Active quiz created', [
                 'active_quiz_id' => $activeQuiz->id,
@@ -187,12 +219,17 @@ class QuizService
                 
                 // Пересчитать expires_at правильно
                 $correctExpiresAt = $activeQuiz->started_at->copy()->addSeconds(20);
-                $activeQuiz->update(['expires_at' => $correctExpiresAt]);
+                DB::table('active_quizzes')
+                    ->where('id', $activeQuiz->id)
+                    ->update(['expires_at' => $correctExpiresAt->format('Y-m-d H:i:s')]);
                 $activeQuiz->refresh();
                 
-                // Снова установить часовой пояс
-                $activeQuiz->started_at = Carbon::parse($activeQuiz->started_at)->setTimezone('UTC');
-                $activeQuiz->expires_at = Carbon::parse($activeQuiz->expires_at)->setTimezone('UTC');
+                // Снова прочитать из БД
+                $rawData = DB::table('active_quizzes')
+                    ->where('id', $activeQuiz->id)
+                    ->first(['started_at', 'expires_at']);
+                $activeQuiz->started_at = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->started_at, 'UTC');
+                $activeQuiz->expires_at = Carbon::createFromFormat('Y-m-d H:i:s', $rawData->expires_at, 'UTC');
                 
                 Log::info('Fixed expires_at', [
                     'active_quiz_id' => $activeQuiz->id,
