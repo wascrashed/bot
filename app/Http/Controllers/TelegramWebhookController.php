@@ -162,15 +162,19 @@ class TelegramWebhookController extends Controller
         ]);
         
         $activeQuiz = null;
-        $now = \Carbon\Carbon::now();
+        $now = \Carbon\Carbon::now('UTC');
         
         foreach ($activeQuizzes as $quiz) {
+            // Убедиться, что даты в UTC
+            $quiz->started_at = Carbon::parse($quiz->started_at)->setTimezone('UTC');
+            $quiz->expires_at = Carbon::parse($quiz->expires_at)->setTimezone('UTC');
+            
             // КРИТИЧЕСКАЯ ПРОВЕРКА: если expires_at раньше started_at, исправить
-            if ($quiz->expires_at->lessThan($quiz->started_at)) {
+            if ($quiz->expires_at->lessThanOrEqualTo($quiz->started_at)) {
                 Log::error('CRITICAL: Found quiz with invalid expires_at, fixing...', [
                     'active_quiz_id' => $quiz->id,
-                    'started_at' => $quiz->started_at->format('Y-m-d H:i:s'),
-                    'expires_at_before' => $quiz->expires_at->format('Y-m-d H:i:s'),
+                    'started_at' => $quiz->started_at->format('Y-m-d H:i:s T'),
+                    'expires_at_before' => $quiz->expires_at->format('Y-m-d H:i:s T'),
                 ]);
                 
                 // Пересчитать expires_at правильно
@@ -178,9 +182,14 @@ class TelegramWebhookController extends Controller
                 $quiz->update(['expires_at' => $correctExpiresAt]);
                 $quiz->refresh();
                 
+                // Снова установить часовой пояс
+                $quiz->started_at = Carbon::parse($quiz->started_at)->setTimezone('UTC');
+                $quiz->expires_at = Carbon::parse($quiz->expires_at)->setTimezone('UTC');
+                
                 Log::info('Fixed quiz expires_at', [
                     'active_quiz_id' => $quiz->id,
-                    'expires_at_after' => $quiz->expires_at->format('Y-m-d H:i:s'),
+                    'expires_at_after' => $quiz->expires_at->format('Y-m-d H:i:s T'),
+                    'time_diff_seconds' => $quiz->expires_at->diffInSeconds($quiz->started_at),
                 ]);
             }
             
@@ -189,8 +198,8 @@ class TelegramWebhookController extends Controller
             $expiresAt = $quiz->expires_at;
             $isNotExpired = $expiresAt->isFuture();
             
-            // Логировать для диагностики
-            Log::debug('Checking quiz expiration', [
+            // Логировать для диагностики (используем info вместо debug для гарантии записи)
+            Log::info('Checking quiz expiration', [
                 'active_quiz_id' => $quiz->id,
                 'started_at' => $quiz->started_at->format('Y-m-d H:i:s T'),
                 'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),

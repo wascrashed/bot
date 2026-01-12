@@ -51,8 +51,10 @@ class ActiveQuiz extends Model
      */
     public function isExpired(): bool
     {
-        // Использовать isPast() для правильной работы с часовыми поясами
-        return $this->expires_at->isPast();
+        // Убедиться, что используем UTC для сравнения
+        $expiresAt = Carbon::parse($this->expires_at)->setTimezone('UTC');
+        $now = Carbon::now('UTC');
+        return $expiresAt->isPast();
     }
 
     /**
@@ -60,7 +62,9 @@ class ActiveQuiz extends Model
      */
     public function getRemainingSeconds(): int
     {
-        $remaining = Carbon::now()->diffInSeconds($this->expires_at, false);
+        $expiresAt = Carbon::parse($this->expires_at)->setTimezone('UTC');
+        $now = Carbon::now('UTC');
+        $remaining = $now->diffInSeconds($expiresAt, false);
         return max(0, $remaining);
     }
 }

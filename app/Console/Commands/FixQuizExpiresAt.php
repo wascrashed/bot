@@ -15,28 +15,37 @@ class FixQuizExpiresAt extends Command
     {
         $this->info('=== Исправление expires_at у викторин ===');
         
-        // Найти все активные викторины с неправильным expires_at
-        $quizzes = ActiveQuiz::where('is_active', true)->get();
+        // Найти все викторины (активные и завершенные) с неправильным expires_at
+        // Проверяем последние 50 викторин для производительности
+        $quizzes = ActiveQuiz::latest()->take(50)->get();
         
         $fixed = 0;
+        $checked = 0;
         foreach ($quizzes as $quiz) {
-            // Проверить, что expires_at раньше started_at
-            if ($quiz->expires_at->lessThan($quiz->started_at)) {
-                $this->warn("Викторина #{$quiz->id}: expires_at ({$quiz->expires_at->format('Y-m-d H:i:s')}) раньше started_at ({$quiz->started_at->format('Y-m-d H:i:s')})");
+            $checked++;
+            // Убедиться, что даты в UTC
+            $startedAt = Carbon::parse($quiz->started_at)->setTimezone('UTC');
+            $expiresAt = Carbon::parse($quiz->expires_at)->setTimezone('UTC');
+            
+            // Проверить, что expires_at раньше или равно started_at
+            if ($expiresAt->lessThanOrEqualTo($startedAt)) {
+                $status = $quiz->is_active ? '🟢 Активна' : '🔴 Завершена';
+                $this->warn("Викторина #{$quiz->id} ({$status}): expires_at ({$expiresAt->format('Y-m-d H:i:s T')}) раньше или равно started_at ({$startedAt->format('Y-m-d H:i:s T')})");
                 
                 // Пересчитать правильно
-                $correctExpiresAt = $quiz->started_at->copy()->addSeconds(20);
+                $correctExpiresAt = $startedAt->copy()->addSeconds(20);
                 $quiz->update(['expires_at' => $correctExpiresAt]);
                 
-                $this->info("  ✅ Исправлено: expires_at = {$correctExpiresAt->format('Y-m-d H:i:s')}");
+                $this->info("  ✅ Исправлено: expires_at = {$correctExpiresAt->format('Y-m-d H:i:s T')}");
                 $fixed++;
             }
         }
         
+        $this->info("\n📊 Проверено викторин: {$checked}");
         if ($fixed > 0) {
-            $this->info("\n✅ Исправлено викторин: {$fixed}");
+            $this->info("✅ Исправлено викторин: {$fixed}");
         } else {
-            $this->info("\n✅ Проблемных викторин не найдено");
+            $this->info("✅ Проблемных викторин не найдено");
         }
         
         return Command::SUCCESS;

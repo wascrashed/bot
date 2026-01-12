@@ -109,23 +109,32 @@ class QuizService
             }
 
             // Создать активную викторину
-            $startedAt = Carbon::now();
-            // Использовать clone вместо copy() и явно установить время
-            $expiresAt = clone $startedAt;
-            $expiresAt->addSeconds(20); // 20 секунд на ответ
+            // ЯВНО использовать UTC для избежания проблем с часовыми поясами
+            $startedAt = Carbon::now('UTC');
+            $expiresAt = $startedAt->copy()->addSeconds(20); // 20 секунд на ответ
             
             // КРИТИЧЕСКАЯ ПРОВЕРКА: убедиться, что expires_at позже started_at
             if ($expiresAt->lessThanOrEqualTo($startedAt)) {
                 Log::error('CRITICAL: expires_at calculation error!', [
-                    'started_at' => $startedAt->format('Y-m-d H:i:s'),
-                    'expires_at_before_fix' => $expiresAt->format('Y-m-d H:i:s'),
+                    'started_at' => $startedAt->format('Y-m-d H:i:s T'),
+                    'expires_at_before_fix' => $expiresAt->format('Y-m-d H:i:s T'),
                 ]);
                 // Пересчитать правильно
-                $expiresAt = $startedAt->copy();
-                $expiresAt->addSeconds(20);
+                $expiresAt = $startedAt->copy()->addSeconds(20);
                 Log::info('Recalculated expires_at', [
-                    'expires_at_after_fix' => $expiresAt->format('Y-m-d H:i:s'),
+                    'expires_at_after_fix' => $expiresAt->format('Y-m-d H:i:s T'),
                 ]);
+            }
+            
+            // Дополнительная проверка: разница должна быть 20 секунд
+            $diff = $expiresAt->diffInSeconds($startedAt);
+            if ($diff !== 20) {
+                Log::warning('Time difference is not 20 seconds, recalculating', [
+                    'diff' => $diff,
+                    'started_at' => $startedAt->format('Y-m-d H:i:s T'),
+                    'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
+                ]);
+                $expiresAt = $startedAt->copy()->addSeconds(20);
             }
             $answersOrder = $this->prepareAnswersForQuestion($question);
 
@@ -153,21 +162,27 @@ class QuizService
             
             // Проверить, что данные сохранились правильно
             $activeQuiz->refresh();
+            
+            // ЯВНО перезагрузить с правильным часовым поясом
+            $activeQuiz->started_at = Carbon::parse($activeQuiz->started_at)->setTimezone('UTC');
+            $activeQuiz->expires_at = Carbon::parse($activeQuiz->expires_at)->setTimezone('UTC');
+            
             Log::info('Active quiz created', [
                 'active_quiz_id' => $activeQuiz->id,
                 'saved_answers_order' => $activeQuiz->answers_order,
-                'saved_started_at' => $activeQuiz->started_at->format('Y-m-d H:i:s'),
-                'saved_expires_at' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
-                'now' => Carbon::now()->format('Y-m-d H:i:s'),
+                'saved_started_at' => $activeQuiz->started_at->format('Y-m-d H:i:s T'),
+                'saved_expires_at' => $activeQuiz->expires_at->format('Y-m-d H:i:s T'),
+                'now' => Carbon::now('UTC')->format('Y-m-d H:i:s T'),
                 'is_expired_check' => $activeQuiz->isExpired(),
+                'time_diff_seconds' => $activeQuiz->expires_at->diffInSeconds($activeQuiz->started_at),
             ]);
             
             // КРИТИЧЕСКАЯ ПРОВЕРКА: если expires_at раньше started_at, исправить
-            if ($activeQuiz->expires_at->lessThan($activeQuiz->started_at)) {
-                Log::error('CRITICAL: expires_at is before started_at! Fixing...', [
+            if ($activeQuiz->expires_at->lessThanOrEqualTo($activeQuiz->started_at)) {
+                Log::error('CRITICAL: expires_at is before or equal to started_at! Fixing...', [
                     'active_quiz_id' => $activeQuiz->id,
-                    'started_at' => $activeQuiz->started_at->format('Y-m-d H:i:s'),
-                    'expires_at_before' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
+                    'started_at' => $activeQuiz->started_at->format('Y-m-d H:i:s T'),
+                    'expires_at_before' => $activeQuiz->expires_at->format('Y-m-d H:i:s T'),
                 ]);
                 
                 // Пересчитать expires_at правильно
@@ -175,9 +190,14 @@ class QuizService
                 $activeQuiz->update(['expires_at' => $correctExpiresAt]);
                 $activeQuiz->refresh();
                 
+                // Снова установить часовой пояс
+                $activeQuiz->started_at = Carbon::parse($activeQuiz->started_at)->setTimezone('UTC');
+                $activeQuiz->expires_at = Carbon::parse($activeQuiz->expires_at)->setTimezone('UTC');
+                
                 Log::info('Fixed expires_at', [
                     'active_quiz_id' => $activeQuiz->id,
-                    'expires_at_after' => $activeQuiz->expires_at->format('Y-m-d H:i:s'),
+                    'expires_at_after' => $activeQuiz->expires_at->format('Y-m-d H:i:s T'),
+                    'time_diff_seconds' => $activeQuiz->expires_at->diffInSeconds($activeQuiz->started_at),
                 ]);
             }
 
