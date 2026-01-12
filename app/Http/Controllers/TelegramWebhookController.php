@@ -142,6 +142,14 @@ class TelegramWebhookController extends Controller
                 $username = $from['username'] ?? null;
                 $firstName = $from['first_name'] ?? '';
 
+                // Логировать обработку текстового ответа
+                Log::info('Processing text answer', [
+                    'active_quiz_id' => $activeQuiz->id,
+                    'chat_id' => $chatId,
+                    'user_id' => $userId,
+                    'answer_text' => $text,
+                ]);
+
                 $this->quizService->processAnswer(
                     $activeQuiz->id,
                     $userId,
@@ -200,8 +208,21 @@ class TelegramWebhookController extends Controller
             // Отвечаем на callback, что викторина уже завершена
             $telegram = new \App\Services\TelegramService();
             $telegram->answerCallbackQuery($callbackQueryId, 'Время на ответ истекло!', false);
+            Log::warning('Callback query for inactive quiz', [
+                'chat_id' => $chatId,
+                'user_id' => $userId,
+                'callback_data' => $data,
+            ]);
             return;
         }
+
+        // Логировать обработку callback
+        Log::info('Processing callback answer', [
+            'active_quiz_id' => $activeQuiz->id,
+            'chat_id' => $chatId,
+            'user_id' => $userId,
+            'callback_data' => $data,
+        ]);
 
         // Обработать ответ через callback
         $this->quizService->processAnswerWithCallback(

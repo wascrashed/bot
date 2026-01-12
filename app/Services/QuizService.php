@@ -110,7 +110,7 @@ class QuizService
 
             // Создать активную викторину
             $startedAt = Carbon::now();
-            $expiresAt = $startedAt->copy()->addSeconds(60); // 1 минута на ответ
+            $expiresAt = $startedAt->copy()->addSeconds(20); // 20 секунд на ответ
 
             $activeQuiz = ActiveQuiz::create([
                 'chat_id' => $chatId,
@@ -135,9 +135,9 @@ class QuizService
             if ($result && isset($result['message_id'])) {
                 $activeQuiz->update(['message_id' => $result['message_id']]);
                 
-                // Запланировать проверку результатов через 1 минуту
+                // Запланировать проверку результатов через 20 секунд
                 dispatch(new \App\Jobs\CheckQuizResults($activeQuiz->id))
-                    ->delay(now()->addSeconds(60));
+                    ->delay(now()->addSeconds(20));
 
                 // Обновить статистику чата
                 $this->updateChatStatistics($chatId, $chatType);
@@ -321,7 +321,7 @@ class QuizService
 
         $message = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
         $message .= "❓ " . $question->question . "\n\n";
-        $message .= "⏱ У вас есть <b>1 минута</b> на ответ!\n";
+        $message .= "⏱ У вас есть <b>20 секунд</b> на ответ!\n";
         $message .= "💰 За правильный ответ: <b>{$pointsText}</b>";
 
         return $this->telegram->sendMessageWithButtons($chatId, $message, $buttons);
@@ -341,7 +341,7 @@ class QuizService
 
         $message = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
         $message .= "❓ " . $question->question . "\n\n";
-        $message .= "⏱ У вас есть <b>1 минута</b> на ответ!\n";
+        $message .= "⏱ У вас есть <b>20 секунд</b> на ответ!\n";
         $message .= "💰 За правильный ответ: <b>{$pointsText}</b>";
 
         return $this->telegram->sendMessageWithButtons($chatId, $message, $buttons);
@@ -367,7 +367,7 @@ class QuizService
 
         $caption = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
         $caption .= "❓ " . $question->question . "\n\n";
-        $caption .= "⏱ У вас есть <b>1 минута</b> на ответ!\n";
+        $caption .= "⏱ У вас есть <b>20 секунд</b> на ответ!\n";
         $caption .= "💬 Напишите ваш ответ текстом\n";
         $caption .= "💰 За правильный ответ: <b>{$pointsText}</b>";
 
@@ -392,7 +392,7 @@ class QuizService
         $message = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
         $message .= "❓ " . $question->question;
         $message .= $answersText . "\n";
-        $message .= "⏱ У вас есть <b>1 минута</b> на ответ!\n";
+        $message .= "⏱ У вас есть <b>20 секунд</b> на ответ!\n";
         $message .= "💬 Напишите номер ответа (1, 2, 3...) или сам ответ\n";
         $message .= "💰 За правильный ответ: <b>{$pointsText}</b>";
 
@@ -463,6 +463,15 @@ class QuizService
             }
 
             if (!$selectedAnswer) {
+                // Логировать неудачное распознавание ответа
+                Log::warning('Failed to parse quiz answer', [
+                    'active_quiz_id' => $activeQuizId,
+                    'user_id' => $userId,
+                    'answer_text' => $answerText,
+                    'question_type' => $question->question_type,
+                    'callback_data' => $callbackData,
+                ]);
+                
                 if ($callbackQueryId) {
                     $this->telegram->answerCallbackQuery($callbackQueryId, 'Не удалось распознать ответ', false);
                 }
@@ -481,6 +490,15 @@ class QuizService
                 'answer' => $selectedAnswer,
                 'is_correct' => $isCorrect,
                 'response_time_ms' => $responseTime,
+            ]);
+            
+            // Логировать сохранение ответа для отладки
+            Log::info('Quiz answer saved', [
+                'active_quiz_id' => $activeQuizId,
+                'user_id' => $userId,
+                'answer' => $selectedAnswer,
+                'is_correct' => $isCorrect,
+                'result_id' => $result->id,
             ]);
 
             // Если это правильный ответ и первый в викторине
@@ -655,7 +673,23 @@ class QuizService
             $activeQuiz->update(['is_active' => false]);
 
             $question = $activeQuiz->question;
-            $results = $activeQuiz->results;
+            
+            // Перезагрузить результаты из БД, чтобы убедиться, что все сохранены
+            $results = QuizResult::where('active_quiz_id', $activeQuizId)->get();
+            
+            // Логировать количество найденных результатов
+            Log::info('Finishing quiz', [
+                'active_quiz_id' => $activeQuizId,
+                'chat_id' => $activeQuiz->chat_id,
+                'results_count' => $results->count(),
+                'results' => $results->map(function($r) {
+                    return [
+                        'user_id' => $r->user_id,
+                        'answer' => $r->answer,
+                        'is_correct' => $r->is_correct,
+                    ];
+                })->toArray(),
+            ]);
 
             // Подсчитать статистику
             $totalAnswers = $results->count();
