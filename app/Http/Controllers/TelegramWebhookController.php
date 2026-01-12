@@ -154,6 +154,13 @@ class TelegramWebhookController extends Controller
             ->where('is_active', true)
             ->get();
         
+        // Логировать количество найденных викторин
+        Log::info('Searching for active quizzes', [
+            'chat_id' => $chatId,
+            'found_count' => $activeQuizzes->count(),
+            'quiz_ids' => $activeQuizzes->pluck('id')->toArray(),
+        ]);
+        
         $activeQuiz = null;
         $now = \Carbon\Carbon::now();
         
@@ -178,8 +185,29 @@ class TelegramWebhookController extends Controller
             }
             
             // Проверить, что викторина еще не истекла
-            if ($quiz->expires_at->greaterThan($now)) {
+            // Использовать прямое сравнение Carbon объектов для правильной работы с часовыми поясами
+            $expiresAt = $quiz->expires_at;
+            $isNotExpired = $expiresAt->isFuture();
+            
+            // Логировать для диагностики
+            Log::debug('Checking quiz expiration', [
+                'active_quiz_id' => $quiz->id,
+                'started_at' => $quiz->started_at->format('Y-m-d H:i:s T'),
+                'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
+                'now' => $now->format('Y-m-d H:i:s T'),
+                'is_future' => $isNotExpired,
+                'is_expired_method' => $quiz->isExpired(),
+            ]);
+            
+            if ($isNotExpired) {
                 $activeQuiz = $quiz;
+                Log::info('Active quiz found for message', [
+                    'active_quiz_id' => $quiz->id,
+                    'chat_id' => $chatId,
+                    'started_at' => $quiz->started_at->format('Y-m-d H:i:s'),
+                    'expires_at' => $quiz->expires_at->format('Y-m-d H:i:s'),
+                    'now' => now()->format('Y-m-d H:i:s'),
+                ]);
                 break; // Нашли активную викторину
             }
         }
@@ -194,9 +222,25 @@ class TelegramWebhookController extends Controller
                 'now' => now()->format('Y-m-d H:i:s'),
             ]);
         } else {
-            Log::debug('No active quiz found for message', [
+            // Логировать детально, почему викторина не найдена
+            $allQuizzes = ActiveQuiz::where('chat_id', $chatId)->latest()->take(3)->get();
+            $quizInfo = [];
+            foreach ($allQuizzes as $q) {
+                $quizInfo[] = [
+                    'id' => $q->id,
+                    'is_active' => $q->is_active,
+                    'started_at' => $q->started_at->format('Y-m-d H:i:s'),
+                    'expires_at' => $q->expires_at->format('Y-m-d H:i:s'),
+                    'is_expired' => $q->isExpired(),
+                    'expires_before_start' => $q->expires_at->lessThan($q->started_at),
+                ];
+            }
+            
+            Log::info('No active quiz found for message', [
                 'chat_id' => $chatId,
                 'has_text' => !empty($message['text'] ?? ''),
+                'now' => $now->format('Y-m-d H:i:s T'),
+                'recent_quizzes' => $quizInfo,
             ]);
         }
 

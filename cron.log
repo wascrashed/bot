@@ -1,0 +1,62 @@
+[2026-01-12 13:16:42] Cron started
+
+   INFO  No scheduled commands are ready to run.  
+
+[2026-01-12 13:16:43] Schedule:run completed
+
+   INFO  Processing jobs from the [default] queue.  
+
+
+   INFO  Processing jobs from the [default] queue.  
+
+
+   INFO  Processing jobs from the [default] queue.  
+
+
+   INFO  Processing jobs from the [default] queue.  
+
+
+   INFO  Processing jobs from the [default] queue.  
+
+
+   INFO  Processing jobs from the [default] queue.  
+
+
+   INFO  Processing jobs from the [default] queue.  
+
+
+   INFO  Processing jobs from the [default] queue.  
+
+
+   INFO  Processing jobs from the [default] queue.  
+
+
+   INFO  Processing jobs from the [default] queue.  
+
+[2026-01-12 13:16:44] Queue:work completed (10 tasks processed)
+[2026-01-12 13:16:44] Cron finished successfully (exit code: 0)
+---
+[2026-01-12 13:42:01] Cron started
+
+  2026-01-12 10:42:01 Running ['artisan' quiz:start-random] in background  6ms DONE
+  ⇂ ('/opt/php82/bin/php' 'artisan' quiz:start-random > '/dev/null' 2>&1 ; '/opt/php82/bin/php' 'artisan' schedule:finish "framework/schedule-0dc7eeb530e98fa68d3f3c3cdd8482d94f7b7a9a" "$?") > '/dev/null' 2>&1 &  
+  2026-01-12 10:42:01 Running ['artisan' quiz:finish-stuck] ....... 140ms DONE
+  ⇂ '/opt/php82/bin/php' 'artisan' quiz:finish-stuck > '/dev/null' 2>&1  
+
+[2026-01-12 13:42:01] Schedule:run completed
+[2026-01-12 13:42:02] Queue:work completed (10 tasks processed)
+[2026-01-12 13:42:02] Cron finished successfully (exit code: 0)
+---
+[2026-01-12 13:43:01] Cron started
+
+  2026-01-12 10:43:01 Running ['artisan' quiz:finish-stuck] ....... 519ms DONE
+  ⇂ '/opt/php82/bin/php' 'artisan' quiz:finish-stuck > '/dev/null' 2>&1  
+
+[2026-01-12 13:43:01] Schedule:run completed
+  2026-01-12 10:43:01 App\Jobs\CheckQuizResults ...................... RUNNING
+  2026-01-12 10:43:01 App\Jobs\CheckQuizResults ................. 10.08ms DONE
+  2026-01-12 10:43:02 App\Jobs\CheckQuizResults ...................... RUNNING
+  2026-01-12 10:43:02 App\Jobs\CheckQuizResults .................. 9.51ms DONE
+[2026-01-12 13:43:03] Queue:work completed (10 tasks processed)
+[2026-01-12 13:43:03] Cron finished successfully (exit code: 0)
+---

@@ -51,7 +51,8 @@ class ActiveQuiz extends Model
      */
     public function isExpired(): bool
     {
-        return Carbon::now()->greaterThan($this->expires_at);
+        // Использовать isPast() для правильной работы с часовыми поясами
+        return $this->expires_at->isPast();
     }
 
     /**
