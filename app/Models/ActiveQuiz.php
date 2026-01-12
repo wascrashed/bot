@@ -54,7 +54,8 @@ class ActiveQuiz extends Model
         // Убедиться, что используем UTC для сравнения
         $expiresAt = Carbon::parse($this->expires_at)->setTimezone('UTC');
         $now = Carbon::now('UTC');
-        return $expiresAt->isPast();
+        // ВАЖНО: использовать lessThanOrEqualTo для точной проверки
+        return $expiresAt->lessThanOrEqualTo($now);
     }
 
     /**

@@ -206,7 +206,8 @@ class TelegramWebhookController extends Controller
             
             // Проверить, что викторина еще не истекла
             // Использовать прямое сравнение Carbon объектов для правильной работы с часовыми поясами
-            $isNotExpired = $expiresAt->isFuture();
+            // ВАЖНО: использовать greaterThanOrEqualTo вместо isFuture, чтобы включить момент истечения
+            $isNotExpired = $expiresAt->greaterThanOrEqualTo($now);
             
             // Логировать для диагностики (используем info вместо debug для гарантии записи)
             Log::info('Checking quiz expiration', [
@@ -214,7 +215,8 @@ class TelegramWebhookController extends Controller
                 'started_at' => $startedAt->format('Y-m-d H:i:s T'),
                 'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
                 'now' => $now->format('Y-m-d H:i:s T'),
-                'is_future' => $isNotExpired,
+                'is_not_expired' => $isNotExpired,
+                'time_diff_seconds' => $now->diffInSeconds($expiresAt, false),
             ]);
             
             if ($isNotExpired) {

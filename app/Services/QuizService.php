@@ -590,7 +590,8 @@ class QuizService
             }
 
             // Проверить истечение времени с использованием UTC
-            if ($expiresAt->isPast()) {
+            // ВАЖНО: использовать lessThanOrEqualTo вместо isPast, чтобы точно определить истечение
+            if ($expiresAt->lessThanOrEqualTo($now)) {
                 Log::warning('ActiveQuiz expired', [
                     'active_quiz_id' => $activeQuizId,
                     'expires_at' => $expiresAt->format('Y-m-d H:i:s T'),
