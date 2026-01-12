@@ -101,6 +101,24 @@ class TelegramWebhookController extends Controller
             }
         }
         
+        // Обработка события удаления бота из группы
+        if (isset($message['left_chat_member'])) {
+            $leftMember = $message['left_chat_member'];
+            $telegramService = new \App\Services\TelegramService();
+            $botInfo = $telegramService->getMe();
+            
+            if ($botInfo && isset($leftMember['id']) && $leftMember['id'] == $botInfo['id']) {
+                // Бот удален из группы - удалить чат из БД
+                $this->removeChatFromDatabase($chatId);
+                Log::info("Bot removed from chat", [
+                    'chat_id' => $chatId,
+                    'chat_type' => $chatType,
+                    'chat_title' => $chat['title'] ?? null,
+                ]);
+                return;
+            }
+        }
+        
         $from = $message['from'] ?? null;
         
         // Игнорировать сообщения от ботов
@@ -194,5 +212,14 @@ class TelegramWebhookController extends Controller
             $data, // callback_data для парсинга ответа
             $callbackQueryId // callback_query_id для ответа на callback
         );
+    }
+    
+    /**
+     * Удалить чат из базы данных
+     */
+    private function removeChatFromDatabase(int $chatId): void
+    {
+        $telegramService = new \App\Services\TelegramService();
+        $telegramService->removeChatFromDatabase($chatId);
     }
 }

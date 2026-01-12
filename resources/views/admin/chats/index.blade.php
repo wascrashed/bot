@@ -47,9 +47,14 @@
                         <a href="{{ route('admin.chats.show', $chat->chat_id) }}" class="btn btn-primary" style="padding: 5px 10px; font-size: 12px;">Просмотр</a>
                         <form action="{{ route('admin.chats.toggle-active', $chat->chat_id) }}" method="POST" style="display: inline;">
                             @csrf
-                            <button type="submit" class="btn btn-{{ $chat->is_active ? 'danger' : 'success' }}" style="padding: 5px 10px; font-size: 12px;">
+                            <button type="submit" class="btn btn-{{ $chat->is_active ? 'warning' : 'success' }}" style="padding: 5px 10px; font-size: 12px;">
                                 {{ $chat->is_active ? 'Деактивировать' : 'Активировать' }}
                             </button>
+                        </form>
+                        <form action="{{ route('admin.chats.destroy', $chat->chat_id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Вы уверены, что хотите удалить этот чат из базы данных? Это действие нельзя отменить.');">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;">🗑️ Удалить</button>
                         </form>
                     </td>
                 </tr>

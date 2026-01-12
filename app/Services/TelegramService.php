@@ -108,6 +108,68 @@ class TelegramService
                     }
                 }
 
+                // Обработка миграции группы в супергруппу (400 Bad Request)
+                if (is_array($result) && isset($result['error_code']) && $result['error_code'] == 400) {
+                    $description = $result['description'] ?? '';
+                    $parameters = $result['parameters'] ?? [];
+                    $chatId = $params['chat_id'] ?? null;
+                    
+                    // Миграция группы в супергруппу
+                    if (stripos($description, 'group chat was upgraded to a supergroup chat') !== false && isset($parameters['migrate_to_chat_id'])) {
+                        $oldChatId = $chatId;
+                        $newChatId = $parameters['migrate_to_chat_id'];
+                        
+                        if ($oldChatId && $newChatId) {
+                            Log::info('Chat migrated to supergroup', [
+                                'old_chat_id' => $oldChatId,
+                                'new_chat_id' => $newChatId,
+                            ]);
+                            
+                            // Обновить chat_id в базе данных
+                            $this->migrateChatId($oldChatId, $newChatId);
+                            
+                            // Повторить запрос с новым chat_id
+                            if (isset($params['chat_id'])) {
+                                $params['chat_id'] = $newChatId;
+                                // Повторить запрос один раз с новым chat_id
+                                try {
+                                    $retryResponse = $this->client->post("{$this->apiUrl}/{$method}", [
+                                        'json' => $params,
+                                    ]);
+                                    $retryBody = $retryResponse->getBody()->getContents();
+                                    $retryResult = json_decode($retryBody, true);
+                                    
+                                    if (is_array($retryResult) && isset($retryResult['ok']) && $retryResult['ok'] === true) {
+                                        return $retryResult['result'] ?? [];
+                                    }
+                                } catch (\Exception $e) {
+                                    Log::error('Retry after migration failed', [
+                                        'method' => $method,
+                                        'new_chat_id' => $newChatId,
+                                        'error' => $e->getMessage(),
+                                    ]);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Бот удален из группы или заблокирован
+                    if ($chatId && (
+                        stripos($description, 'chat not found') !== false ||
+                        stripos($description, 'bot was blocked') !== false ||
+                        stripos($description, 'bot was kicked') !== false ||
+                        stripos($description, 'bot is not a member') !== false
+                    )) {
+                        Log::warning('Bot removed or blocked from chat', [
+                            'chat_id' => $chatId,
+                            'description' => $description,
+                        ]);
+                        
+                        // Удалить чат из базы данных
+                        $this->removeChatFromDatabase($chatId);
+                    }
+                }
+
                 Log::error('Telegram API error', [
                     'method' => $method,
                     'response' => $result,
@@ -448,6 +510,76 @@ class TelegramService
         }
         
         return null;
+    }
+
+    /**
+     * Удалить чат из базы данных
+     */
+    public function removeChatFromDatabase(int $chatId): void
+    {
+        try {
+            // Деактивировать все активные викторины в этом чате
+            \App\Models\ActiveQuiz::where('chat_id', $chatId)
+                ->where('is_active', true)
+                ->update(['is_active' => false]);
+            
+            // Удалить статистику чата
+            \App\Models\ChatStatistics::where('chat_id', $chatId)->delete();
+            
+            Log::info('Chat removed from database', [
+                'chat_id' => $chatId,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to remove chat from database', [
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Обновить chat_id при миграции группы в супергруппу
+     */
+    private function migrateChatId(int $oldChatId, int $newChatId): void
+    {
+        try {
+            // Обновить ChatStatistics
+            \App\Models\ChatStatistics::where('chat_id', $oldChatId)
+                ->update([
+                    'chat_id' => $newChatId,
+                    'chat_type' => 'supergroup',
+                ]);
+            
+            // Обновить ActiveQuiz
+            \App\Models\ActiveQuiz::where('chat_id', $oldChatId)
+                ->update(['chat_id' => $newChatId]);
+            
+            // Обновить QuizResult
+            \App\Models\QuizResult::whereHas('activeQuiz', function($query) use ($oldChatId) {
+                    $query->where('chat_id', $oldChatId);
+                })
+                ->get()
+                ->each(function($result) use ($newChatId) {
+                    if ($result->activeQuiz) {
+                        $result->activeQuiz->update(['chat_id' => $newChatId]);
+                    }
+                });
+            
+            // Обновить UserScore
+            \App\Models\UserScore::where('chat_id', $oldChatId)
+                ->update(['chat_id' => $newChatId]);
+            
+            Log::info('Chat ID migrated successfully', [
+                'old_chat_id' => $oldChatId,
+                'new_chat_id' => $newChatId,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to migrate chat ID', [
+                'old_chat_id' => $oldChatId,
+                'new_chat_id' => $newChatId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

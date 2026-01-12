@@ -44,4 +44,28 @@ class ChatController extends Controller
 
         return back()->with('success', 'Статус чата обновлен.');
     }
+
+    /**
+     * Delete chat from database
+     */
+    public function destroy($chatId)
+    {
+        try {
+            $chat = ChatStatistics::where('chat_id', $chatId)->firstOrFail();
+            $chatTitle = $chat->chat_title ?? "Chat {$chatId}";
+            
+            // Деактивировать все активные викторины в этом чате
+            \App\Models\ActiveQuiz::where('chat_id', $chatId)
+                ->where('is_active', true)
+                ->update(['is_active' => false]);
+            
+            // Удалить статистику чата
+            $chat->delete();
+            
+            return redirect()->route('admin.chats.index')
+                ->with('success', "Чат \"{$chatTitle}\" успешно удален из базы данных.");
+        } catch (\Exception $e) {
+            return back()->with('error', 'Ошибка при удалении чата: ' . $e->getMessage());
+        }
+    }
 }
