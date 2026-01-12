@@ -9,7 +9,7 @@
         <h2>Создать новый вопрос</h2>
     </div>
 
-    <form method="POST" action="{{ route('admin.questions.store') }}">
+    <form method="POST" action="{{ route('admin.questions.store') }}" enctype="multipart/form-data">
         @csrf
 
         <div class="form-group">
@@ -69,14 +69,23 @@
             </select>
         </div>
 
-        <div class="form-group">
-            <label class="form-label" for="image_url">URL изображения (для типа "С изображением")</label>
-            <input type="url" id="image_url" name="image_url" class="form-control" value="{{ old('image_url') }}">
+        <div class="form-group" id="image-upload-group" style="display: none;">
+            <label class="form-label">Загрузить изображение *</label>
+            <input type="file" id="image_file" name="image_file" class="form-control" accept="image/*" onchange="previewImage(this)">
+            <small class="form-text text-muted">Поддерживаемые форматы: JPEG, PNG, JPG, GIF, WEBP (до 10MB)</small>
+            <div id="image-preview" style="margin-top: 10px; display: none;">
+                <img id="preview-img" src="" alt="Preview" style="max-width: 300px; max-height: 300px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
         </div>
 
-        <div class="form-group">
-            <label class="form-label" for="image_file_id">File ID изображения (Telegram)</label>
-            <input type="text" id="image_file_id" name="image_file_id" class="form-control" value="{{ old('image_file_id') }}">
+        <div class="form-group" id="image-url-group" style="display: none;">
+            <label class="form-label" for="image_url">Или указать URL изображения</label>
+            <input type="url" id="image_url" name="image_url" class="form-control" value="{{ old('image_url') }}" placeholder="https://example.com/image.jpg">
+        </div>
+
+        <div class="form-group" id="image-file-id-group" style="display: none;">
+            <label class="form-label" for="image_file_id">Или File ID изображения (Telegram)</label>
+            <input type="text" id="image_file_id" name="image_file_id" class="form-control" value="{{ old('image_file_id') }}" placeholder="AgACAgIAAxkBAAIB...">
         </div>
 
         <div style="display: flex; gap: 10px;">
@@ -97,5 +106,39 @@ function addWrongAnswer() {
     input.placeholder = 'Неправильный ответ';
     container.appendChild(input);
 }
+
+function previewImage(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('preview-img').src = e.target.result;
+            document.getElementById('image-preview').style.display = 'block';
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+// Показать/скрыть поля для изображения в зависимости от типа вопроса
+document.getElementById('question_type').addEventListener('change', function() {
+    const questionType = this.value;
+    const imageUploadGroup = document.getElementById('image-upload-group');
+    const imageUrlGroup = document.getElementById('image-url-group');
+    const imageFileIdGroup = document.getElementById('image-file-id-group');
+    
+    if (questionType === 'image') {
+        imageUploadGroup.style.display = 'block';
+        imageUrlGroup.style.display = 'block';
+        imageFileIdGroup.style.display = 'block';
+    } else {
+        imageUploadGroup.style.display = 'none';
+        imageUrlGroup.style.display = 'none';
+        imageFileIdGroup.style.display = 'none';
+    }
+});
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('question_type').dispatchEvent(new Event('change'));
+});
 </script>
 @endsection

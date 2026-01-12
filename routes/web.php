@@ -25,6 +25,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::middleware(['admin.auth'])->group(function () {
         Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::post('/dashboard/toggle-auto-quiz', [DashboardController::class, 'toggleAutoQuiz'])->name('dashboard.toggle-auto-quiz');
+        Route::post('/dashboard/start-quiz', [DashboardController::class, 'startQuiz'])->name('dashboard.start-quiz');
 
         // Вопросы
         Route::resource('questions', QuestionController::class);

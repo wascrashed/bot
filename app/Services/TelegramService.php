@@ -150,6 +150,27 @@ class TelegramService
      */
     public function sendPhoto(int $chatId, string $photo, string $caption = '', array $options = []): ?array
     {
+        // Проверить, является ли это локальным файлом (URL содержит storage/questions/)
+        if (strpos($photo, 'storage/questions/') !== false) {
+            // Извлечь путь к файлу из URL
+            $parsedUrl = parse_url($photo);
+            $filePath = $parsedUrl['path'] ?? $photo;
+            
+            // Убрать начальный слеш и storage/, добавить storage/app/public/
+            $filePath = ltrim($filePath, '/');
+            if (strpos($filePath, 'storage/questions/') === 0) {
+                $filePath = 'storage/app/public/' . substr($filePath, 8); // убрать 'storage/'
+            }
+            
+            $fullPath = base_path($filePath);
+            
+            if (file_exists($fullPath)) {
+                // Отправить файл через multipart/form-data
+                return $this->sendPhotoFile($chatId, $fullPath, $caption, $options);
+            }
+        }
+        
+        // Если это URL или file_id
         $params = array_merge([
             'chat_id' => $chatId,
             'photo' => $photo, // URL или file_id
@@ -158,6 +179,61 @@ class TelegramService
         ], $options);
 
         return $this->makeRequest('sendPhoto', $params);
+    }
+
+    /**
+     * Отправить изображение как файл (multipart/form-data)
+     */
+    private function sendPhotoFile(int $chatId, string $filePath, string $caption = '', array $options = []): ?array
+    {
+        try {
+            $endpoint = 'sendPhoto';
+            $this->checkRateLimit($endpoint);
+            
+            $params = array_merge([
+                'chat_id' => $chatId,
+                'caption' => $caption,
+                'parse_mode' => 'HTML',
+            ], $options);
+            
+            $multipart = [];
+            foreach ($params as $key => $value) {
+                $multipart[] = [
+                    'name' => $key,
+                    'contents' => $value,
+                ];
+            }
+            
+            // Добавить файл
+            $multipart[] = [
+                'name' => 'photo',
+                'contents' => fopen($filePath, 'r'),
+                'filename' => basename($filePath),
+            ];
+            
+            $response = $this->client->post("{$this->apiUrl}/{$endpoint}", [
+                'multipart' => $multipart,
+            ]);
+            
+            $result = json_decode($response->getBody()->getContents(), true);
+            
+            if (is_array($result) && isset($result['ok']) && $result['ok']) {
+                return $result['result'] ?? [];
+            }
+            
+            Log::error('Telegram API error sending photo file', [
+                'method' => $endpoint,
+                'response' => $result,
+            ]);
+            
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Telegram API request error sending photo file', [
+                'method' => 'sendPhoto',
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 
     /**

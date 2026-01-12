@@ -12,11 +12,14 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Запускать викторину каждые 6 минут (10 раз в час)
-        $schedule->command('quiz:start-random')
-            ->cron('*/6 * * * *')
-            ->withoutOverlapping()
-            ->runInBackground();
+        // Запускать викторину каждые 6 минут (10 раз в час) - только если включено
+        $autoQuizEnabled = \Illuminate\Support\Facades\Cache::get('auto_quiz_enabled', config('telegram.auto_quiz_enabled', true));
+        if ($autoQuizEnabled) {
+            $schedule->command('quiz:start-random')
+                ->cron('*/6 * * * *')
+                ->withoutOverlapping()
+                ->runInBackground();
+        }
         
         // Обновлять аналитику каждые 5 минут
         $schedule->command('analytics:update')

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Question;
+use App\Services\TelegramService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class QuestionController extends Controller
 {
@@ -57,11 +59,60 @@ class QuestionController extends Controller
             'wrong_answers.*' => 'string',
             'category' => 'required|in:heroes,abilities,items,lore,esports,memes',
             'difficulty' => 'required|in:easy,medium,hard',
-            'image_url' => 'nullable|url',
+            'image_url' => 'nullable|string', // Может быть URL или относительный путь
             'image_file_id' => 'nullable|string',
+            'image_file' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // до 10MB
         ]);
 
         $validated['wrong_answers'] = $validated['wrong_answers'] ?? [];
+
+        // Обработка загрузки файла изображения
+        if ($request->hasFile('image_file')) {
+            $image = $request->file('image_file');
+            $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+            $path = $image->storeAs('public/questions', $filename);
+            $fullPath = storage_path('app/' . $path);
+            
+            // Попытаться загрузить в Telegram и получить file_id (оптимизация)
+            // Используем тестовый чат или первый доступный чат для загрузки
+            try {
+                $telegramService = new TelegramService();
+                $botInfo = $telegramService->getMe();
+                
+                if ($botInfo) {
+                    // Загрузить изображение в Telegram через sendPhoto в тестовый чат
+                    // Telegram вернет file_id, который можно использовать для всех чатов
+                    $testChatId = config('telegram.test_chat_id', null);
+                    
+                    if ($testChatId) {
+                        $result = $telegramService->sendPhoto($testChatId, $fullPath, 'Upload for file_id');
+                        // sendPhoto возвращает массив message, в котором есть photo
+                        if ($result && isset($result['photo']) && is_array($result['photo'])) {
+                            // Получить самый большой размер фото (обычно последний в массиве)
+                            $photos = $result['photo'];
+                            $largestPhoto = end($photos);
+                            $fileId = $largestPhoto['file_id'] ?? null;
+                            
+                            if ($fileId) {
+                                $validated['image_file_id'] = $fileId;
+                                Log::info('Image uploaded to Telegram, file_id obtained', [
+                                    'file_id' => $fileId,
+                                    'question_id' => 'new'
+                                ]);
+                            }
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to upload image to Telegram for file_id', [
+                    'error' => $e->getMessage()
+                ]);
+                // Продолжаем работу, используя локальный файл
+            }
+            
+            // Сохранить URL для доступа к файлу (относительный путь для storage)
+            $validated['image_url'] = 'storage/questions/' . $filename;
+        }
 
         Question::create($validated);
 
@@ -90,11 +141,71 @@ class QuestionController extends Controller
             'wrong_answers.*' => 'string',
             'category' => 'required|in:heroes,abilities,items,lore,esports,memes',
             'difficulty' => 'required|in:easy,medium,hard',
-            'image_url' => 'nullable|url',
+            'image_url' => 'nullable|string', // Может быть URL или относительный путь
             'image_file_id' => 'nullable|string',
+            'image_file' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // до 10MB
+            'remove_image' => 'nullable|boolean',
         ]);
 
         $validated['wrong_answers'] = $validated['wrong_answers'] ?? [];
+
+        // Удаление изображения
+        if ($request->has('remove_image') && $request->remove_image) {
+            $validated['image_url'] = null;
+            $validated['image_file_id'] = null;
+        }
+
+        // Обработка загрузки нового файла изображения
+        if ($request->hasFile('image_file')) {
+            // Удалить старое изображение, если есть
+            if ($question->image_url) {
+                // Проверить, локальный ли это файл
+                if (strpos($question->image_url, 'storage/questions/') !== false) {
+                    $oldFilename = basename($question->image_url);
+                    \Storage::delete('public/questions/' . $oldFilename);
+                }
+            }
+            
+            $image = $request->file('image_file');
+            $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+            $path = $image->storeAs('public/questions', $filename);
+            $fullPath = storage_path('app/' . $path);
+            
+            // Попытаться загрузить в Telegram и получить file_id (оптимизация)
+            try {
+                $telegramService = new TelegramService();
+                $botInfo = $telegramService->getMe();
+                
+                if ($botInfo) {
+                    $testChatId = config('telegram.test_chat_id', null);
+                    
+                    if ($testChatId) {
+                        $result = $telegramService->sendPhoto($testChatId, $fullPath, 'Upload for file_id');
+                        // sendPhoto возвращает массив message, в котором есть photo
+                        if ($result && isset($result['photo']) && is_array($result['photo'])) {
+                            $photos = $result['photo'];
+                            $largestPhoto = end($photos);
+                            $fileId = $largestPhoto['file_id'] ?? null;
+                            
+                            if ($fileId) {
+                                $validated['image_file_id'] = $fileId;
+                                Log::info('Image uploaded to Telegram, file_id obtained', [
+                                    'file_id' => $fileId,
+                                    'question_id' => $question->id
+                                ]);
+                            }
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to upload image to Telegram for file_id', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+            
+            // Сохранить путь к файлу (относительный путь для storage)
+            $validated['image_url'] = 'storage/questions/' . $filename;
+        }
 
         $question->update($validated);
 

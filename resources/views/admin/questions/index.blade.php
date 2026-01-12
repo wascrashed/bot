@@ -54,7 +54,12 @@
                 @foreach($questions as $question)
                 <tr>
                     <td>{{ $question->id }}</td>
-                    <td>{{ Str::limit($question->question, 60) }}</td>
+                    <td>
+                        {{ Str::limit($question->question, 60) }}
+                        @if($question->image_url || $question->image_file_id)
+                            <span class="badge badge-info" title="Есть изображение">🖼️</span>
+                        @endif
+                    </td>
                     <td>
                         @php
                             $categories = ['heroes' => 'Герои', 'abilities' => 'Способности', 'items' => 'Предметы', 'lore' => 'Лор', 'esports' => 'Киберспорт', 'memes' => 'Мемы'];

@@ -246,11 +246,17 @@ class QuizService
      */
     private function sendImageQuestion(int $chatId, Question $question, string $pointsText): ?array
     {
+        // Приоритет: file_id > image_url
         $photo = $question->image_file_id ?? $question->image_url;
         
         if (!$photo) {
             // Если нет изображения, отправить как текстовый вопрос
             return $this->sendTextQuestion($chatId, $question, $pointsText);
+        }
+
+        // Если это локальный файл (относительный путь), преобразовать в полный URL
+        if (strpos($photo, 'storage/questions/') === 0 && !filter_var($photo, FILTER_VALIDATE_URL)) {
+            $photo = asset($photo);
         }
 
         $caption = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
