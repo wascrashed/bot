@@ -324,14 +324,25 @@ class TelegramService
             }, $row);
         }
 
-        $params = array_merge([
+        // Формируем reply_markup как массив (Guzzle автоматически сериализует в JSON)
+        $replyMarkup = [
+            'inline_keyboard' => $inlineKeyboard,
+        ];
+
+        // Базовые параметры
+        $params = [
             'chat_id' => $chatId,
             'text' => $text,
             'parse_mode' => 'HTML',
-            'reply_markup' => [
-                'inline_keyboard' => $inlineKeyboard,
-            ],
-        ], $options);
+        ];
+
+        // Объединяем с options, но reply_markup устанавливаем в конце, чтобы не перезаписать
+        $params = array_merge($params, $options);
+        
+        // Устанавливаем reply_markup (если не передан в options)
+        if (!isset($options['reply_markup'])) {
+            $params['reply_markup'] = $replyMarkup;
+        }
 
         return $this->makeRequest('sendMessage', $params);
     }
