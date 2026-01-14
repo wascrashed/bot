@@ -205,6 +205,11 @@ class TelegramWebhookController extends Controller
                     $this->handleProfileCommand($chat['id'], $from);
                 }
                 
+                // Команда /top в личном чате
+                if (!empty($text) && preg_match('/^\/(top|топ|лидеры)(@\w+)?\s*$/i', $text)) {
+                    $this->handleTopCommand($chat['id'], $from);
+                }
+                
                 // Обработка ввода данных для профиля (если пользователь ожидает ввода)
                 $userId = $from['id'] ?? null;
                 if ($userId && !empty($text)) {
@@ -341,6 +346,12 @@ class TelegramWebhookController extends Controller
         // Команда /profile в группе
         if (!empty($text) && preg_match('/^\/(profile|профиль)(@\w+)?\s*$/i', $text)) {
             $this->handleProfileCommand($chatId, $from);
+            return; // Не обрабатываем дальше
+        }
+        
+        // Команда /top в группе
+        if (!empty($text) && preg_match('/^\/(top|топ|лидеры)(@\w+)?\s*$/i', $text)) {
+            $this->handleTopCommand($chatId, $from);
             return; // Не обрабатываем дальше
         }
         
@@ -1670,6 +1681,64 @@ class TelegramWebhookController extends Controller
                 'data' => $data,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * Обработка команды /top (топ лидеров)
+     */
+    private function handleTopCommand(int $chatId, ?array $from): void
+    {
+        try {
+            $telegramService = new TelegramService();
+            
+            // Получаем топ 10 пользователей по очкам
+            $topUsers = UserProfile::orderBy('rank_points', 'desc')
+                ->orderBy('total_points', 'desc')
+                ->take(10)
+                ->get();
+            
+            if ($topUsers->isEmpty()) {
+                $telegramService->sendMessage(
+                    $chatId,
+                    "🏆 <b>Топ лидеров</b>\n\n😔 Пока нет лидеров в рейтинге.",
+                    ['parse_mode' => 'HTML']
+                );
+                return;
+            }
+            
+            $message = "🏆 <b>Топ лидеров</b>\n\n";
+            
+            foreach ($topUsers as $index => $user) {
+                $place = $index + 1;
+                $medal = $this->getMedalEmoji($place);
+                $rank = $user->getFormattedRank();
+                $points = number_format($user->rank_points);
+                $name = $user->game_nickname ?? "User {$user->user_id}";
+                
+                $message .= "{$medal} <b>#{$place}</b> {$rank}\n";
+                $message .= "   👤 {$name} - <b>{$points} очков</b>\n\n";
+            }
+            
+            $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+        } catch (\Exception $e) {
+            Log::error('Failed to handle top command', [
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Получить эмодзи медали для места
+     */
+    private function getMedalEmoji(int $place): string
+    {
+        switch ($place) {
+            case 1: return '🥇';
+            case 2: return '🥈';
+            case 3: return '🥉';
+            default: return '🏅';
         }
     }
 }

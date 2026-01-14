@@ -108,9 +108,17 @@
             </thead>
             <tbody>
                 @foreach($topUsers as $index => $user)
+                @php
+                    $profile = \App\Models\UserProfile::where('user_id', $user->user_id)->first();
+                @endphp
                 <tr>
                     <td>{{ $index + 1 }}</td>
-                    <td>{{ $user->first_name ?? $user->username ?? "User {$user->user_id}" }}</td>
+                    <td>
+                        {{ $user->first_name ?? $user->username ?? "User {$user->user_id}" }}
+                        @if($profile)
+                            <br><small class="text-muted">{{ $profile->getFormattedRank() }}</small>
+                        @endif
+                    </td>
                     <td><strong>{{ number_format($user->total_points) }}</strong></td>
                     <td>{{ number_format($user->correct_answers) }}</td>
                 </tr>

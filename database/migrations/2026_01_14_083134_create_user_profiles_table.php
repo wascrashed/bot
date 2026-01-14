@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('faceit_username')->nullable(); // Faceit username для CS2
             $table->integer('total_points')->default(0); // Общие очки по всем чатам
             $table->integer('rank_points')->default(0); // Очки для ранга (может отличаться от total_points)
-            $table->string('rank_tier')->default('herald'); // Ранг (herald, guardian, crusader, archon, legend, ancient, divine, immortal)
+            $table->string('rank_tier')->default('recruit'); // Ранг (recruit, guardian, knight, hero, legend, overlord, deity, titan)
             $table->integer('rank_stars')->default(0); // Звезды ранга (0-5)
             $table->boolean('show_rank_in_name')->default(false); // Показывать рейтинг рядом с именем
             $table->json('dotabuff_data')->nullable(); // Кэш данных с Dotabuff (рейтинг, значок)

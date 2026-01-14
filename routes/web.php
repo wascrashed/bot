@@ -9,7 +9,8 @@ use App\Http\Controllers\Admin\{
     ChatController,
     LogController,
     MemesController,
-    MemeSuggestionsController
+    MemeSuggestionsController,
+    UsersController
 };
 use Illuminate\Support\Facades\Route;
 
@@ -46,6 +47,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Статистика
         Route::get('/statistics', [StatisticsController::class, 'index'])->name('statistics.index');
+
+        // Пользователи
+        Route::get('/users', [UsersController::class, 'index'])->name('users.index');
+        Route::get('/users/{userProfile}', [UsersController::class, 'show'])->name('users.show');
 
         // Чаты
         Route::get('/chats', [ChatController::class, 'index'])->name('chats.index');
