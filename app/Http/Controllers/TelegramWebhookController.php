@@ -1058,15 +1058,24 @@ class TelegramWebhookController extends Controller
                 'status' => MemeSuggestion::STATUS_PENDING,
             ]);
             
-            // Отправить подтверждение пользователю
-            $telegramService->sendMessage(
-                $chatId,
-                "✅ <b>Спасибо за предложение!</b>\n\nВаш мем отправлен на модерацию. Администратор рассмотрит его в ближайшее время.",
-                ['parse_mode' => 'HTML']
-            );
-            
             // Уведомить админа о новом предложении
-            $this->notifyAdminAboutNewSuggestion($suggestion);
+            $adminNotified = $this->notifyAdminAboutNewSuggestion($suggestion);
+            
+            // Отправить подтверждение пользователю после того, как админ получил уведомление
+            if ($adminNotified) {
+                $telegramService->sendMessage(
+                    $chatId,
+                    "✅ <b>Спасибо за предложение!</b>\n\nВаш мем отправлен на модерацию. Администратор рассмотрит его в ближайшее время.",
+                    ['parse_mode' => 'HTML']
+                );
+            } else {
+                // Если не удалось уведомить админа, все равно подтверждаем пользователю
+                $telegramService->sendMessage(
+                    $chatId,
+                    "✅ <b>Спасибо за предложение!</b>\n\nВаш мем сохранен и будет рассмотрен администратором в ближайшее время.",
+                    ['parse_mode' => 'HTML']
+                );
+            }
             
             try {
                 Log::info('Meme suggestion received', [
@@ -1091,15 +1100,17 @@ class TelegramWebhookController extends Controller
 
     /**
      * Уведомить админа о новом предложении мема
+     * @return bool true если уведомление успешно отправлено, false в противном случае
      */
-    private function notifyAdminAboutNewSuggestion(MemeSuggestion $suggestion): void
+    private function notifyAdminAboutNewSuggestion(MemeSuggestion $suggestion): bool
     {
         try {
             $telegramService = new TelegramService();
             $ownerChatId = $telegramService->getOwnerChatId();
             
             if (!$ownerChatId) {
-                return;
+                Log::warning('Cannot notify admin: owner chat ID not found');
+                return false;
             }
             
             $userInfo = $suggestion->first_name ?? $suggestion->username ?? "ID: {$suggestion->user_id}";
@@ -1112,20 +1123,36 @@ class TelegramWebhookController extends Controller
             $message .= "💡 Проверьте в админ-панели: /admin/meme-suggestions";
             
             // Отправить превью мема админу
+            $result = null;
             if ($suggestion->media_type === MemeSuggestion::TYPE_VIDEO) {
-                $telegramService->sendVideo($ownerChatId, $suggestion->file_id, $message);
+                $result = $telegramService->sendVideo($ownerChatId, $suggestion->file_id, $message);
             } else {
-                $telegramService->sendPhoto($ownerChatId, $suggestion->file_id, $message);
+                $result = $telegramService->sendPhoto($ownerChatId, $suggestion->file_id, $message);
+            }
+            
+            if ($result) {
+                Log::info('✅ Admin notified about new meme suggestion', [
+                    'suggestion_id' => $suggestion->id,
+                    'owner_chat_id' => $ownerChatId,
+                ]);
+                return true;
+            } else {
+                Log::warning('Failed to send notification to admin', [
+                    'suggestion_id' => $suggestion->id,
+                    'owner_chat_id' => $ownerChatId,
+                ]);
+                return false;
             }
         } catch (\Exception $e) {
             try {
-                Log::warning('Failed to notify admin about new meme suggestion', [
+                Log::error('Failed to notify admin about new meme suggestion', [
                     'suggestion_id' => $suggestion->id,
                     'error' => $e->getMessage(),
                 ]);
             } catch (\Exception $logError) {
                 // Игнорируем ошибки логирования
             }
+            return false;
         }
     }
 
