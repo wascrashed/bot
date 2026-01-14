@@ -1445,13 +1445,24 @@ class TelegramWebhookController extends Controller
             // В личном чате - полная информация
             $message = "👤 <b>Ваш профиль</b>\n\n";
 
-            // Ник в игре
-            $nickname = $profile->game_nickname ?? ($from['first_name'] ?? 'Пользователь');
-            $message .= "🎮 <b>Ник:</b> {$nickname}\n\n";
+            // Имя
+            $firstName = $from['first_name'] ?? 'Пользователь';
+            $message .= "👤 <b>Имя:</b> {$firstName}\n";
 
-            // Рейтинг бота
-            $message .= "🏆 <b>Рейтинг в боте:</b>\n";
-            $message .= "{$profile->getFormattedRank()}\n";
+            // Ник в игре
+            $gameNickname = $profile->game_nickname ?? 'Не указан';
+            $message .= "🎮 <b>Ник в игре:</b> {$gameNickname}\n";
+
+            // Юзернейм
+            $username = $from['username'] ?? null;
+            if ($username) {
+                $message .= "📱 <b>Username:</b> @{$username}\n";
+            } else {
+                $message .= "📱 <b>Username:</b> Не указан\n";
+            }
+
+            // Рейтинг в боте
+            $message .= "🏆 <b>Рейтинг в боте:</b> {$profile->getFormattedRank()}\n";
             
             // Синхронизировать данные с Dotabuff (если прошло больше часа)
             if ($profile->dotabuff_url) {
@@ -1475,14 +1486,11 @@ class TelegramWebhookController extends Controller
             if ($mmrValue !== null) {
                 $message .= "📈 <b>MMR:</b> " . number_format($mmrValue) . "\n";
             } else {
-                $message .= "📊 <b>Очки:</b> " . number_format($profile->rank_points) . "\n";
+                $message .= "📈 <b>MMR:</b> " . number_format($profile->rank_points) . "\n";
             }
-            $message .= "\n";
 
-            // Dotabuff
+            // Dotabuff (кликабельный ник)
             if ($profile->dotabuff_url) {
-                $message .= "🎮 <b>Dotabuff:</b>\n";
-                
                 // Показываем кликабельный ник вместо ссылки
                 $dotabuffNickname = 'Профиль';
                 if ($profile->dotabuff_data && isset($profile->dotabuff_data['nickname'])) {
@@ -1490,15 +1498,12 @@ class TelegramWebhookController extends Controller
                 }
                 
                 // Используем HTML ссылку для кликабельного ника
-                $message .= "🔗 <a href=\"{$profile->dotabuff_url}\">{$dotabuffNickname}</a>\n";
-                
-                if ($profile->dotabuff_data) {
-                    if (isset($profile->dotabuff_data['rank'])) {
-                        $message .= "🏅 <b>Ранг:</b> {$profile->dotabuff_data['rank']}\n";
-                    }
-                }
-                $message .= "\n";
+                $message .= "🎮 <b>Dotabuff:</b> <a href=\"{$profile->dotabuff_url}\">{$dotabuffNickname}</a>\n";
+            } else {
+                $message .= "🎮 <b>Dotabuff:</b> Не указан\n";
             }
+
+            $message .= "\n";
 
             // Настройки
             $message .= "⚙️ <b>Настройки:</b>\n";
