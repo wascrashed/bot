@@ -12,8 +12,4 @@ return [
     | a conventional file to locate the various service credentials.
     |
     */
-
-    'faceit' => [
-        'api_key' => env('FACEIT_API_KEY'),
-    ],
 ];

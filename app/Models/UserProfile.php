@@ -13,16 +13,13 @@ class UserProfile extends Model
         'user_id',
         'game_nickname',
         'dotabuff_url',
-        'faceit_username',
         'total_points',
         'rank_points',
         'rank_tier',
         'rank_stars',
         'show_rank_in_name',
         'dotabuff_data',
-        'faceit_data',
         'dotabuff_last_sync',
-        'faceit_last_sync',
     ];
 
     protected $casts = [
@@ -31,9 +28,7 @@ class UserProfile extends Model
         'rank_stars' => 'integer',
         'show_rank_in_name' => 'boolean',
         'dotabuff_data' => 'array',
-        'faceit_data' => 'array',
         'dotabuff_last_sync' => 'datetime',
-        'faceit_last_sync' => 'datetime',
     ];
 
     // Ранги Dota 2 стиль

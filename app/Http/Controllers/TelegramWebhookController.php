@@ -9,7 +9,6 @@ use App\Models\UserProfile;
 use App\Services\QuizService;
 use App\Services\TelegramService;
 use App\Services\DotabuffService;
-use App\Services\FaceitService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -206,9 +205,62 @@ class TelegramWebhookController extends Controller
                     $this->handleProfileCommand($chat['id'], $from);
                 }
                 
-                // Команда /setprofile в личном чате
-                if (!empty($text) && preg_match('/^\/(setprofile|настройка|настройки)(@\w+)?\s*$/i', $text)) {
-                    $this->handleSetProfileCommand($chat['id'], $from, $text);
+                // Обработка ввода данных для профиля (если пользователь ожидает ввода)
+                $userId = $from['id'] ?? null;
+                if ($userId && !empty($text)) {
+                    // Проверяем, ожидает ли пользователь ввода ника
+                    if (\Illuminate\Support\Facades\Cache::has("profile_waiting_nickname_{$userId}")) {
+                        \Illuminate\Support\Facades\Cache::forget("profile_waiting_nickname_{$userId}");
+                        $profile = UserProfile::getOrCreate($userId);
+                        $profile->game_nickname = $text;
+                        $profile->save();
+                        
+                        $telegramService = new \App\Services\TelegramService();
+                        $telegramService->sendMessage(
+                            $chat['id'],
+                            "✅ Ник в игре установлен: <b>{$text}</b>",
+                            ['parse_mode' => 'HTML']
+                        );
+                        // Показываем обновленный профиль
+                        $this->handleProfileCommand($chat['id'], $from);
+                        return;
+                    }
+                    
+                    // Проверяем, ожидает ли пользователь ввода Dotabuff URL
+                    if (\Illuminate\Support\Facades\Cache::has("profile_waiting_dotabuff_{$userId}")) {
+                        \Illuminate\Support\Facades\Cache::forget("profile_waiting_dotabuff_{$userId}");
+                        
+                        $dotabuffService = new \App\Services\DotabuffService();
+                        if (!$dotabuffService->validateUrl($text)) {
+                            $telegramService = new \App\Services\TelegramService();
+                            $telegramService->sendMessage(
+                                $chat['id'],
+                                "❌ Неверный URL Dotabuff.\n\nФормат: https://www.dotabuff.com/players/123456789"
+                            );
+                            return;
+                        }
+                        
+                        $profile = UserProfile::getOrCreate($userId);
+                        $profile->dotabuff_url = $text;
+                        
+                        // Синхронизируем данные сразу
+                        $dotabuffData = $dotabuffService->getPlayerData($text);
+                        if ($dotabuffData) {
+                            $profile->dotabuff_data = $dotabuffData;
+                            $profile->dotabuff_last_sync = now();
+                        }
+                        $profile->save();
+                        
+                        $telegramService = new \App\Services\TelegramService();
+                        $telegramService->sendMessage(
+                            $chat['id'],
+                            "✅ Ссылка на Dotabuff установлена и синхронизирована!",
+                            ['parse_mode' => 'HTML']
+                        );
+                        // Показываем обновленный профиль
+                        $this->handleProfileCommand($chat['id'], $from);
+                        return;
+                    }
                 }
                 
                 // Обработка предложенных мемов (фото/видео) в личном чате
@@ -636,6 +688,12 @@ class TelegramWebhookController extends Controller
                     'callback_data' => $data,
                 ]);
             }
+        }
+        
+        // Обработка кнопок профиля
+        if (strpos($data, 'profile_') === 0) {
+            $this->handleProfileCallback($chatId, $from, $data, $callbackQueryId);
+            return;
         }
         
         // Обработка кнопки "Предложить мем"
@@ -1360,7 +1418,6 @@ class TelegramWebhookController extends Controller
 
             $telegramService = new TelegramService();
             $dotabuffService = new DotabuffService();
-            $faceitService = new FaceitService();
 
             $message = "👤 <b>Ваш профиль</b>\n\n";
 
@@ -1412,42 +1469,30 @@ class TelegramWebhookController extends Controller
                 $message .= "\n";
             }
 
-            // Faceit (CS2)
-            if ($profile->faceit_username) {
-                $message .= "🎯 <b>Faceit (CS2):</b>\n";
-                $message .= "👤 <b>Username:</b> {$profile->faceit_username}\n";
-                
-                // Синхронизировать данные с Faceit (если прошло больше 30 минут)
-                if (!$profile->faceit_last_sync || $profile->faceit_last_sync->addMinutes(30)->isPast()) {
-                    $faceitData = $faceitService->getPlayerData($profile->faceit_username);
-                    if ($faceitData) {
-                        $profile->faceit_data = $faceitData;
-                        $profile->faceit_last_sync = now();
-                        $profile->save();
-                    }
-                }
-                
-                if ($profile->faceit_data) {
-                    if (isset($profile->faceit_data['cs2_level'])) {
-                        $message .= "📊 <b>Уровень:</b> {$profile->faceit_data['cs2_level']}\n";
-                    }
-                    if (isset($profile->faceit_data['cs2_elo'])) {
-                        $message .= "⚡ <b>ELO:</b> " . number_format($profile->faceit_data['cs2_elo']) . "\n";
-                    }
-                }
-                $message .= "\n";
-            }
 
             // Настройки
             $message .= "⚙️ <b>Настройки:</b>\n";
             $showRankStatus = $profile->show_rank_in_name ? "✅ Включено" : "❌ Выключено";
             $message .= "Показывать рейтинг рядом с именем: {$showRankStatus}\n\n";
 
-            $message .= "💡 <b>Команды:</b>\n";
-            $message .= "/setprofile - настроить профиль\n";
-            $message .= "/profile - обновить профиль";
+            // Кнопки для настройки
+            $buttons = [
+                [
+                    ['text' => '✏️ Настроить ник', 'callback_data' => 'profile_set_nickname'],
+                    ['text' => '🔗 Настроить Dotabuff', 'callback_data' => 'profile_set_dotabuff'],
+                ],
+                [
+                    [
+                        'text' => $profile->show_rank_in_name ? '👁️ Скрыть рейтинг' : '👁️ Показать рейтинг',
+                        'callback_data' => 'profile_toggle_rank'
+                    ],
+                ],
+                [
+                    ['text' => '🔄 Обновить профиль', 'callback_data' => 'profile_refresh'],
+                ],
+            ];
 
-            $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+            $telegramService->sendMessageWithButtons($chatId, $message, $buttons, ['parse_mode' => 'HTML']);
         } catch (\Exception $e) {
             Log::error('Failed to handle profile command', [
                 'chat_id' => $chatId,
@@ -1483,12 +1528,10 @@ class TelegramWebhookController extends Controller
                 $message .= "Использование:\n";
                 $message .= "/setprofile nickname <ник>\n";
                 $message .= "/setprofile dotabuff <url>\n";
-                $message .= "/setprofile faceit <username>\n";
                 $message .= "/setprofile showrank on/off\n\n";
                 $message .= "Примеры:\n";
                 $message .= "/setprofile nickname ProPlayer123\n";
                 $message .= "/setprofile dotabuff https://www.dotabuff.com/players/123456789\n";
-                $message .= "/setprofile faceit MyFaceitName\n";
                 $message .= "/setprofile showrank on";
                 
                 $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
@@ -1523,18 +1566,6 @@ class TelegramWebhookController extends Controller
                     $telegramService->sendMessage($chatId, "✅ Ссылка на Dotabuff установлена и синхронизирована!", ['parse_mode' => 'HTML']);
                     break;
 
-                case 'faceit':
-                    $profile->faceit_username = $value;
-                    // Синхронизируем данные сразу
-                    $faceitService = new FaceitService();
-                    $faceitData = $faceitService->getPlayerData($value);
-                    if ($faceitData) {
-                        $profile->faceit_data = $faceitData;
-                        $profile->faceit_last_sync = now();
-                    }
-                    $profile->save();
-                    $telegramService->sendMessage($chatId, "✅ Faceit username установлен и синхронизирован!", ['parse_mode' => 'HTML']);
-                    break;
 
                 case 'showrank':
                 case 'показывать_рейтинг':
@@ -1555,6 +1586,90 @@ class TelegramWebhookController extends Controller
             ]);
             $telegramService = new TelegramService();
             $telegramService->sendMessage($chatId, "❌ Ошибка при настройке профиля. Попробуйте позже.");
+        }
+    }
+
+    /**
+     * Обработка callback queries для профиля
+     */
+    private function handleProfileCallback(int $chatId, ?array $from, string $data, string $callbackQueryId): void
+    {
+        try {
+            if (!$from) {
+                return;
+            }
+
+            $userId = $from['id'] ?? null;
+            if (!$userId) {
+                return;
+            }
+
+            $telegramService = new TelegramService();
+            $telegramService->answerCallbackQuery($callbackQueryId);
+
+            $profile = UserProfile::getOrCreate($userId);
+
+            switch ($data) {
+                case 'profile_set_nickname':
+                    // Устанавливаем флаг ожидания ввода ника
+                    \Illuminate\Support\Facades\Cache::put(
+                        "profile_waiting_nickname_{$userId}",
+                        true,
+                        now()->addMinutes(5)
+                    );
+                    
+                    $message = "✏️ <b>Настройка ника в игре</b>\n\n";
+                    $message .= "Отправьте ваш ник в игре текстовым сообщением.\n\n";
+                    $message .= "💡 <i>Например: ProPlayer123</i>";
+                    
+                    $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+                    break;
+
+                case 'profile_set_dotabuff':
+                    // Устанавливаем флаг ожидания ввода URL
+                    \Illuminate\Support\Facades\Cache::put(
+                        "profile_waiting_dotabuff_{$userId}",
+                        true,
+                        now()->addMinutes(5)
+                    );
+                    
+                    $message = "🔗 <b>Настройка Dotabuff</b>\n\n";
+                    $message .= "Отправьте ссылку на ваш профиль Dotabuff.\n\n";
+                    $message .= "💡 <i>Формат: https://www.dotabuff.com/players/123456789</i>\n\n";
+                    $message .= "📋 <i>Скопируйте ссылку с вашего профиля на dotabuff.com</i>";
+                    
+                    $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+                    break;
+
+                case 'profile_toggle_rank':
+                    // Переключаем показ рейтинга
+                    $profile->show_rank_in_name = !$profile->show_rank_in_name;
+                    $profile->save();
+                    
+                    $status = $profile->show_rank_in_name ? "включено" : "выключено";
+                    $emoji = $profile->show_rank_in_name ? "✅" : "❌";
+                    
+                    $message = "{$emoji} Показ рейтинга рядом с именем: <b>{$status}</b>";
+                    $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+                    
+                    // Обновляем профиль
+                    $this->handleProfileCommand($chatId, $from);
+                    break;
+
+                case 'profile_refresh':
+                    // Обновляем профиль
+                    $this->handleProfileCommand($chatId, $from);
+                    break;
+
+                default:
+                    $telegramService->sendMessage($chatId, "❌ Неизвестная команда профиля.");
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to handle profile callback', [
+                'chat_id' => $chatId,
+                'data' => $data,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }
