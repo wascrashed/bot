@@ -410,8 +410,12 @@ class QuizService
                 return ['Верно', 'Неверно'];
             
             case Question::TYPE_TEXT:
-            case Question::TYPE_IMAGE:
                 return []; // Для текстовых вопросов не нужно сохранять порядок
+            
+            case Question::TYPE_IMAGE:
+                // Для вопросов с изображением проверяем, есть ли варианты ответов
+                $answers = $question->getShuffledAnswers();
+                return !empty($answers) && count($answers) >= 2 ? $answers : [];
             
             default:
                 return $question->getShuffledAnswers();
@@ -523,10 +527,35 @@ class QuizService
         $caption = "<b>🎮 Вопрос по Dota 2!</b>\n\n";
         $caption .= "❓ " . $question->question . "\n\n";
         $caption .= "⏱ У вас есть <b>20 секунд</b> на ответ!\n";
-        $caption .= "💬 Напишите ваш ответ текстом\n";
         $caption .= "💰 За правильный ответ: <b>{$pointsText}</b>";
 
-        return $this->telegram->sendPhoto($chatId, $photo, $caption);
+        // Проверить, есть ли варианты ответов
+        $answers = $question->getShuffledAnswers();
+        
+        if (!empty($answers) && count($answers) >= 2) {
+            // Если есть варианты ответов, добавить кнопки
+            $buttons = [];
+            $currentRow = [];
+            foreach ($answers as $index => $answer) {
+                $currentRow[] = [
+                    'text' => ($index + 1) . '. ' . $answer,
+                    'callback_data' => "quiz_answer_{$question->id}_{$index}",
+                ];
+                
+                // Добавляем по 2 кнопки в ряд
+                if (count($currentRow) >= 2 || $index === count($answers) - 1) {
+                    $buttons[] = $currentRow;
+                    $currentRow = [];
+                }
+            }
+            
+            // Отправить изображение с кнопками
+            return $this->telegram->sendPhotoWithButtons($chatId, $photo, $caption, $buttons);
+        } else {
+            // Если нет вариантов, отправить как текстовый вопрос (без кнопок)
+            $caption .= "\n💬 Напишите ваш ответ текстом";
+            return $this->telegram->sendPhoto($chatId, $photo, $caption);
+        }
     }
 
     /**

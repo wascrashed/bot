@@ -240,6 +240,11 @@ class TelegramService
             'parse_mode' => 'HTML',
         ], $options);
 
+        // Если есть reply_markup в options, добавить его
+        if (isset($options['reply_markup'])) {
+            $params['reply_markup'] = json_encode($options['reply_markup']);
+        }
+
         return $this->makeRequest('sendPhoto', $params);
     }
 
@@ -257,6 +262,11 @@ class TelegramService
                 'caption' => $caption,
                 'parse_mode' => 'HTML',
             ], $options);
+            
+            // Если есть reply_markup, добавить его в multipart
+            if (isset($options['reply_markup'])) {
+                $params['reply_markup'] = json_encode($options['reply_markup']);
+            }
             
             $multipart = [];
             foreach ($params as $key => $value) {
@@ -324,6 +334,29 @@ class TelegramService
         ], $options);
 
         return $this->makeRequest('sendMessage', $params);
+    }
+
+    /**
+     * Отправить изображение с inline кнопками
+     */
+    public function sendPhotoWithButtons(int $chatId, string $photo, string $caption, array $buttons, array $options = []): ?array
+    {
+        $inlineKeyboard = [];
+        
+        foreach ($buttons as $row) {
+            $inlineKeyboard[] = array_map(function($button) {
+                return [
+                    'text' => $button['text'],
+                    'callback_data' => $button['callback_data'] ?? '',
+                ];
+            }, $row);
+        }
+
+        $options['reply_markup'] = [
+            'inline_keyboard' => $inlineKeyboard,
+        ];
+
+        return $this->sendPhoto($chatId, $photo, $caption, $options);
     }
 
     /**
