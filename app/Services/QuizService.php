@@ -1184,6 +1184,14 @@ class QuizService
         );
 
         $userScore->addPoints($points, true);
+        
+        // Обновить профиль пользователя (ранг)
+        try {
+            $profile = \App\Models\UserProfile::getOrCreate($userId);
+            $profile->updateTotalPoints();
+        } catch (\Exception $e) {
+            // Игнорируем ошибки обновления профиля
+        }
     }
 
     /**
@@ -1252,6 +1260,8 @@ class QuizService
                 if ($firstCorrectUser) {
                     $timeSeconds = number_format($firstCorrectUser->response_time_ms / 1000, 2);
                     $userName = $firstCorrectUser->first_name ?? $firstCorrectUser->username ?? "Пользователь";
+                    // Форматируем имя с рангом, если пользователь включил отображение
+                    $userName = \App\Models\UserProfile::formatUserName($firstCorrectUser->user_id, $userName);
                     $points = $question->getPointsForAnswer();
                     $message .= "🏆 <b>Победитель (первый правильный ответ):</b>\n";
                     $message .= "{$userName} ({$timeSeconds} сек.) - получил <b>{$points} очков</b>\n\n";
@@ -1266,6 +1276,8 @@ class QuizService
                     $message .= "✅ <b>Правильно ответили (топ 5):</b>\n";
                     foreach ($correctUsers as $index => $result) {
                         $userName = $result->first_name ?? $result->username ?? "Пользователь";
+                        // Форматируем имя с рангом, если пользователь включил отображение
+                        $userName = \App\Models\UserProfile::formatUserName($result->user_id, $userName);
                         $timeSeconds = number_format($result->response_time_ms / 1000, 2);
                         $place = $index + 1;
                         $message .= "{$place}. {$userName} ({$timeSeconds} сек.)\n";
