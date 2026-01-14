@@ -571,20 +571,43 @@ class TelegramWebhookController extends Controller
         
         // Обработка кнопки "Предложить мем"
         if ($data === 'suggest_mem_button') {
-            $telegramService = new TelegramService();
-            $telegramService->answerCallbackQuery($callbackQueryId, 'Отправьте фото или видео для предложения мема');
-            
-            $message = "📤 <b>Предложить мем</b>\n\n";
-            $message .= "Отправьте фото или видео, и ваш мем будет отправлен на модерацию.\n\n";
-            $message .= "💡 <i>Администратор рассмотрит ваше предложение и либо добавит мем, либо отклонит его.</i>\n\n";
-            $message .= "⚠️ <i>Максимум 5 предложений в час</i>";
-            
-            // Отправить в группу, если это группа, иначе в личку
-            if (in_array($chatType, ['group', 'supergroup'])) {
-                $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
-            } else {
-                // Личный чат
-                $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+            try {
+                Log::info('📤 suggest_mem_button clicked', [
+                    'chat_id' => $chatId,
+                    'chat_type' => $chatType,
+                    'user_id' => $from['id'] ?? null,
+                ]);
+                
+                $telegramService = new TelegramService();
+                $telegramService->answerCallbackQuery($callbackQueryId, 'Отправьте фото или видео для предложения мема');
+                
+                $message = "📤 <b>Предложить мем</b>\n\n";
+                $message .= "Отправьте фото или видео, и ваш мем будет отправлен на модерацию.\n\n";
+                $message .= "💡 <i>Администратор рассмотрит ваше предложение и либо добавит мем, либо отклонит его.</i>\n\n";
+                $message .= "⚠️ <i>Максимум 5 предложений в час</i>";
+                
+                $result = $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+                
+                if ($result) {
+                    Log::info('✅ suggest_mem instruction sent', [
+                        'chat_id' => $chatId,
+                        'message_id' => $result['message_id'] ?? null,
+                    ]);
+                } else {
+                    Log::error('❌ Failed to send suggest_mem instruction', [
+                        'chat_id' => $chatId,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                try {
+                    Log::error('❌ Error handling suggest_mem_button', [
+                        'chat_id' => $chatId,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                } catch (\Exception $logError) {
+                    // Игнорируем ошибки логирования
+                }
             }
             return;
         }
