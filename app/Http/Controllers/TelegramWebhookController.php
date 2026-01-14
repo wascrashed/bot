@@ -182,6 +182,11 @@ class TelegramWebhookController extends Controller
                     }
                     $this->handleSuggestMemCommand($chat['id'], $from);
                 }
+                
+                // Обработка предложенных мемов (фото/видео) в личном чате
+                if (isset($message['photo']) || isset($message['video'])) {
+                    $this->handleMemeSuggestion($message, $from, $chat['id']);
+                }
             }
             return; // Не обрабатываем личные сообщения дальше
         }
@@ -885,13 +890,16 @@ class TelegramWebhookController extends Controller
             // Использовать file_id если есть (оптимизация)
             $media = $meme->file_id ?? $meme->media_url;
             
+            // Подготовить caption (название мема или пустая строка)
+            $caption = !empty($meme->title) ? $meme->title : '';
+            
             $result = null;
             if ($meme->media_type === Meme::TYPE_VIDEO) {
                 // Отправить видео
-                $result = $telegramService->sendVideo($chatId, $media, $meme->title);
+                $result = $telegramService->sendVideo($chatId, $media, $caption);
             } else {
                 // Отправить фото
-                $result = $telegramService->sendPhoto($chatId, $media, $meme->title);
+                $result = $telegramService->sendPhoto($chatId, $media, $caption);
             }
             
             // В группе - просто текст, в личном чате - кнопка
@@ -1007,7 +1015,15 @@ class TelegramWebhookController extends Controller
     private function handleMemeSuggestion(array $message, ?array $from, int $chatId): void
     {
         try {
+            Log::info('📤 handleMemeSuggestion called', [
+                'chat_id' => $chatId,
+                'user_id' => $from['id'] ?? null,
+                'has_photo' => isset($message['photo']),
+                'has_video' => isset($message['video']),
+            ]);
+            
             if (!$from) {
+                Log::warning('handleMemeSuggestion: no from data');
                 return;
             }
             

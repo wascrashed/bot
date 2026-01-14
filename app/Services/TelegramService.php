@@ -233,12 +233,18 @@ class TelegramService
         }
         
         // Если это URL или file_id
-        $params = array_merge([
+        $params = [
             'chat_id' => $chatId,
             'photo' => $photo, // URL или file_id
-            'caption' => $caption,
-            'parse_mode' => 'HTML',
-        ], $options);
+        ];
+        
+        // Добавляем caption только если он не пустой
+        if (!empty($caption)) {
+            $params['caption'] = $caption;
+            $params['parse_mode'] = 'HTML';
+        }
+        
+        $params = array_merge($params, $options);
 
         // Если есть reply_markup в options, добавить его
         if (isset($options['reply_markup'])) {
@@ -257,11 +263,17 @@ class TelegramService
             $endpoint = 'sendPhoto';
             $this->checkRateLimit($endpoint);
             
-            $params = array_merge([
+            $params = [
                 'chat_id' => $chatId,
-                'caption' => $caption,
-                'parse_mode' => 'HTML',
-            ], $options);
+            ];
+            
+            // Добавляем caption только если он не пустой
+            if (!empty($caption)) {
+                $params['caption'] = $caption;
+                $params['parse_mode'] = 'HTML';
+            }
+            
+            $params = array_merge($params, $options);
             
             // Если есть reply_markup, добавить его в multipart
             if (isset($options['reply_markup'])) {
@@ -367,12 +379,18 @@ class TelegramService
         }
         
         // Если это URL или file_id
-        $params = array_merge([
+        $params = [
             'chat_id' => $chatId,
             'video' => $video,
-            'caption' => $caption,
-            'parse_mode' => 'HTML',
-        ], $options);
+        ];
+        
+        // Добавляем caption только если он не пустой
+        if (!empty($caption)) {
+            $params['caption'] = $caption;
+            $params['parse_mode'] = 'HTML';
+        }
+        
+        $params = array_merge($params, $options);
 
         return $this->makeRequest('sendVideo', $params);
     }
@@ -386,11 +404,17 @@ class TelegramService
             $endpoint = 'sendVideo';
             $this->checkRateLimit($endpoint);
             
-            $params = array_merge([
+            $params = [
                 'chat_id' => $chatId,
-                'caption' => $caption,
-                'parse_mode' => 'HTML',
-            ], $options);
+            ];
+            
+            // Добавляем caption только если он не пустой
+            if (!empty($caption)) {
+                $params['caption'] = $caption;
+                $params['parse_mode'] = 'HTML';
+            }
+            
+            $params = array_merge($params, $options);
             
             $multipart = [];
             foreach ($params as $key => $value) {
