@@ -3,10 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActiveQuiz;
+use App\Models\Meme;
+use App\Models\MemeSuggestion;
 use App\Services\QuizService;
+use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 
 class TelegramWebhookController extends Controller
@@ -160,6 +164,11 @@ class TelegramWebhookController extends Controller
                 if (!empty($text) && preg_match('/^\/(status|статус)(@\w+)?\s*$/i', $text)) {
                     $this->handleStatusCommandPrivate($chat['id'], $from);
                 }
+                
+                // Команда /mem в личном чате
+                if (!empty($text) && preg_match('/^\/(mem|мем)(@\w+)?\s*$/i', $text)) {
+                    $this->handleMemCommand($chat['id'], 'private');
+                }
             }
             return; // Не обрабатываем личные сообщения дальше
         }
@@ -200,6 +209,18 @@ class TelegramWebhookController extends Controller
                 // Игнорируем ошибки логирования
             }
             $this->handleStatusCommand($chatId, $from, $chat);
+            return; // Не обрабатываем дальше
+        }
+        
+        // Команда /mem
+        if (!empty($text) && preg_match('/^\/(mem|мем)(@\w+)?\s*$/i', $text)) {
+            $this->handleMemCommand($chatId, $chatType);
+            return; // Не обрабатываем дальше
+        }
+        
+        // Команда /suggest_mem или /предложить_мем
+        if (!empty($text) && preg_match('/^\/(suggest_mem|предложить_мем|предложить)(@\w+)?\s*$/i', $text)) {
+            $this->handleSuggestMemCommand($chatId, $from);
             return; // Не обрабатываем дальше
         }
         
@@ -270,12 +291,21 @@ class TelegramWebhookController extends Controller
             }
         }
 
+        // Обработка предложенных мемов (фото/видео от пользователей)
+        // Фото/видео не могут быть ответом на викторину, так что обрабатываем их как предложения мемов
+        if (isset($message['photo']) || isset($message['video'])) {
+            $this->handleMemeSuggestion($message, $from, $chatId);
+            // НЕ возвращаемся, продолжаем обработку (на случай если нужно что-то еще)
+        }
+        
         // Логировать все сообщения из групп для диагностики
         try {
             Log::info('Message received in group', [
                 'chat_id' => $chatId,
                 'chat_type' => $chatType,
                 'has_text' => !empty($message['text'] ?? ''),
+                'has_photo' => isset($message['photo']),
+                'has_video' => isset($message['video']),
                 'text' => $message['text'] ?? null,
             ]);
         } catch (\Exception $logError) {
@@ -524,6 +554,28 @@ class TelegramWebhookController extends Controller
         }
 
         $chatType = $chat['type'] ?? null;
+        $chatId = $chat['id'] ?? null;
+        
+        // Обработка кнопки "Предложить мем"
+        if ($data === 'suggest_mem_button') {
+            $telegramService = new TelegramService();
+            $telegramService->answerCallbackQuery($callbackQueryId, 'Отправьте фото или видео для предложения мема');
+            
+            $message = "📤 <b>Предложить мем</b>\n\n";
+            $message .= "Отправьте фото или видео, и ваш мем будет отправлен на модерацию.\n\n";
+            $message .= "💡 <i>Администратор рассмотрит ваше предложение и либо добавит мем, либо отклонит его.</i>\n\n";
+            $message .= "⚠️ <i>Максимум 5 предложений в час</i>";
+            
+            // Отправить в группу, если это группа, иначе в личку
+            if (in_array($chatType, ['group', 'supergroup'])) {
+                $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+            } else {
+                // Личный чат
+                $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+            }
+            return;
+        }
+        
         if (!in_array($chatType, ['group', 'supergroup'])) {
             try {
                 Log::info('⚠️ Callback query from non-group chat', ['chat_type' => $chatType]);
@@ -747,6 +799,276 @@ class TelegramWebhookController extends Controller
                     'error_code' => $e->getCode(),
                     'file' => $e->getFile(),
                     'line' => $e->getLine(),
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
+        }
+    }
+
+    /**
+     * Обработка команды /mem (отправка случайного мема)
+     */
+    private function handleMemCommand(int $chatId, string $chatType): void
+    {
+        try {
+            $meme = Meme::getRandom();
+            
+            if (!$meme) {
+                $telegramService = new TelegramService();
+                
+                // В группе - просто текст, в личном чате - кнопка
+                if (in_array($chatType, ['group', 'supergroup'])) {
+                    $telegramService->sendMessage(
+                        $chatId,
+                        "😔 Пока нет мемов в базе.\n\n💡 Добавьте мемы через админ-панель или предложите свой мем в боте!",
+                        ['parse_mode' => 'HTML']
+                    );
+                } else {
+                    // Личный чат - кнопка
+                    $suggestButton = [
+                        [
+                            [
+                                'text' => '📤 Предложить мем',
+                                'callback_data' => 'suggest_mem_button'
+                            ]
+                        ]
+                    ];
+                    
+                    $telegramService->sendMessageWithButtons(
+                        $chatId,
+                        "😔 Пока нет мемов в базе.\n\n💡 Добавьте мемы через админ-панель или предложите свой мем!",
+                        $suggestButton
+                    );
+                }
+                return;
+            }
+            
+            $telegramService = new TelegramService();
+            
+            // Использовать file_id если есть (оптимизация)
+            $media = $meme->file_id ?? $meme->media_url;
+            
+            $result = null;
+            if ($meme->media_type === Meme::TYPE_VIDEO) {
+                // Отправить видео
+                $result = $telegramService->sendVideo($chatId, $media, $meme->title);
+            } else {
+                // Отправить фото
+                $result = $telegramService->sendPhoto($chatId, $media, $meme->title);
+            }
+            
+            // В группе - просто текст, в личном чате - кнопка
+            if (in_array($chatType, ['group', 'supergroup'])) {
+                // В группе - только текст без кнопки
+                $telegramService->sendMessage(
+                    $chatId,
+                    "💡 <i>Вы можете предложить свой мем в боте</i>",
+                    ['parse_mode' => 'HTML']
+                );
+            } else {
+                // Личный чат - кнопка
+                $suggestButton = [
+                    [
+                        [
+                            'text' => '📤 Предложить свой мем',
+                            'callback_data' => 'suggest_mem_button'
+                        ]
+                    ]
+                ];
+                
+                $telegramService->sendMessageWithButtons(
+                    $chatId,
+                    "💡 <i>Хотите предложить свой мем? Нажмите кнопку ниже!</i>",
+                    $suggestButton
+                );
+            }
+            
+            // Сохранить file_id если его еще нет и результат получен
+            if (!$meme->file_id && $result) {
+                $fileId = null;
+                if (isset($result['photo'])) {
+                    $photos = $result['photo'];
+                    $largestPhoto = end($photos);
+                    $fileId = $largestPhoto['file_id'] ?? null;
+                } elseif (isset($result['video'])) {
+                    $fileId = $result['video']['file_id'] ?? null;
+                }
+                
+                if ($fileId) {
+                    $meme->file_id = $fileId;
+                    $meme->save();
+                }
+            }
+        } catch (\Exception $e) {
+            try {
+                Log::error('Failed to send meme', [
+                    'chat_id' => $chatId,
+                    'error' => $e->getMessage(),
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
+        }
+    }
+
+    /**
+     * Обработка команды /suggest_mem (предложить мем)
+     */
+    private function handleSuggestMemCommand(int $chatId, ?array $from): void
+    {
+        try {
+            $telegramService = new TelegramService();
+            
+            $message = "📤 <b>Предложить мем</b>\n\n";
+            $message .= "Нажмите кнопку ниже, чтобы предложить мем, или просто отправьте фото/видео.\n\n";
+            $message .= "💡 <i>Администратор рассмотрит ваше предложение и либо добавит мем, либо отклонит его.</i>\n\n";
+            $message .= "⚠️ <i>Максимум 5 предложений в час</i>";
+            
+            // Кнопка для предложения мема
+            $buttons = [
+                [
+                    [
+                        'text' => '📤 Предложить мем',
+                        'callback_data' => 'suggest_mem_button'
+                    ]
+                ]
+            ];
+            
+            $telegramService->sendMessageWithButtons($chatId, $message, $buttons);
+        } catch (\Exception $e) {
+            try {
+                Log::error('Failed to handle suggest_mem command', [
+                    'chat_id' => $chatId,
+                    'error' => $e->getMessage(),
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
+        }
+    }
+
+    /**
+     * Обработка предложенного мема (фото/видео от пользователя)
+     */
+    private function handleMemeSuggestion(array $message, ?array $from, int $chatId): void
+    {
+        try {
+            if (!$from) {
+                return;
+            }
+            
+            $telegramService = new TelegramService();
+            $fileId = null;
+            $mediaType = null;
+            $caption = $message['caption'] ?? null;
+            
+            // Обработка фото
+            if (isset($message['photo']) && is_array($message['photo'])) {
+                $photos = $message['photo'];
+                $largestPhoto = end($photos); // Берем самое большое фото
+                $fileId = $largestPhoto['file_id'] ?? null;
+                $mediaType = MemeSuggestion::TYPE_PHOTO;
+            }
+            
+            // Обработка видео
+            if (isset($message['video'])) {
+                $fileId = $message['video']['file_id'] ?? null;
+                $mediaType = MemeSuggestion::TYPE_VIDEO;
+            }
+            
+            if (!$fileId || !$mediaType) {
+                return; // Не фото и не видео
+            }
+            
+            // Проверяем, не слишком ли много предложений от этого пользователя (защита от спама)
+            $recentSuggestions = MemeSuggestion::where('user_id', $from['id'])
+                ->where('created_at', '>=', now()->subHours(1))
+                ->count();
+            
+            if ($recentSuggestions >= 5) {
+                $telegramService->sendMessage(
+                    $chatId,
+                    "⏳ Вы отправили слишком много предложений за последний час. Пожалуйста, подождите.",
+                    ['parse_mode' => 'HTML']
+                );
+                return;
+            }
+            
+            // Сохраняем предложение
+            $suggestion = MemeSuggestion::create([
+                'user_id' => $from['id'],
+                'username' => $from['username'] ?? null,
+                'first_name' => $from['first_name'] ?? null,
+                'media_type' => $mediaType,
+                'file_id' => $fileId,
+                'status' => MemeSuggestion::STATUS_PENDING,
+            ]);
+            
+            // Отправить подтверждение пользователю
+            $telegramService->sendMessage(
+                $chatId,
+                "✅ <b>Спасибо за предложение!</b>\n\nВаш мем отправлен на модерацию. Администратор рассмотрит его в ближайшее время.",
+                ['parse_mode' => 'HTML']
+            );
+            
+            // Уведомить админа о новом предложении
+            $this->notifyAdminAboutNewSuggestion($suggestion);
+            
+            try {
+                Log::info('Meme suggestion received', [
+                    'suggestion_id' => $suggestion->id,
+                    'user_id' => $from['id'],
+                    'media_type' => $mediaType,
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
+        } catch (\Exception $e) {
+            try {
+                Log::error('Failed to handle meme suggestion', [
+                    'chat_id' => $chatId,
+                    'error' => $e->getMessage(),
+                ]);
+            } catch (\Exception $logError) {
+                // Игнорируем ошибки логирования
+            }
+        }
+    }
+
+    /**
+     * Уведомить админа о новом предложении мема
+     */
+    private function notifyAdminAboutNewSuggestion(MemeSuggestion $suggestion): void
+    {
+        try {
+            $telegramService = new TelegramService();
+            $ownerChatId = $telegramService->getOwnerChatId();
+            
+            if (!$ownerChatId) {
+                return;
+            }
+            
+            $userInfo = $suggestion->first_name ?? $suggestion->username ?? "ID: {$suggestion->user_id}";
+            $mediaTypeText = $suggestion->media_type === MemeSuggestion::TYPE_VIDEO ? '🎥 Видео' : '📷 Фото';
+            
+            $message = "📥 <b>Новое предложение мема</b>\n\n";
+            $message .= "👤 <b>От:</b> {$userInfo}\n";
+            $message .= "📎 <b>Тип:</b> {$mediaTypeText}\n";
+            $message .= "🆔 <b>ID предложения:</b> {$suggestion->id}\n\n";
+            $message .= "💡 Проверьте в админ-панели: /admin/meme-suggestions";
+            
+            // Отправить превью мема админу
+            if ($suggestion->media_type === MemeSuggestion::TYPE_VIDEO) {
+                $telegramService->sendVideo($ownerChatId, $suggestion->file_id, $message);
+            } else {
+                $telegramService->sendPhoto($ownerChatId, $suggestion->file_id, $message);
+            }
+        } catch (\Exception $e) {
+            try {
+                Log::warning('Failed to notify admin about new meme suggestion', [
+                    'suggestion_id' => $suggestion->id,
+                    'error' => $e->getMessage(),
                 ]);
             } catch (\Exception $logError) {
                 // Игнорируем ошибки логирования

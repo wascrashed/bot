@@ -212,15 +212,15 @@ class TelegramService
      */
     public function sendPhoto(int $chatId, string $photo, string $caption = '', array $options = []): ?array
     {
-        // Проверить, является ли это локальным файлом (URL содержит storage/questions/)
-        if (strpos($photo, 'storage/questions/') !== false) {
+        // Проверить, является ли это локальным файлом (URL содержит storage/questions/ или storage/memes/)
+        if (strpos($photo, 'storage/questions/') !== false || strpos($photo, 'storage/memes/') !== false) {
             // Извлечь путь к файлу из URL
             $parsedUrl = parse_url($photo);
             $filePath = $parsedUrl['path'] ?? $photo;
             
             // Убрать начальный слеш и storage/, добавить storage/app/public/
             $filePath = ltrim($filePath, '/');
-            if (strpos($filePath, 'storage/questions/') === 0) {
+            if (strpos($filePath, 'storage/') === 0) {
                 $filePath = 'storage/app/public/' . substr($filePath, 8); // убрать 'storage/'
             }
             
@@ -337,6 +337,91 @@ class TelegramService
     }
 
     /**
+     * Отправить видео в чат
+     */
+    public function sendVideo(int $chatId, string $video, string $caption = '', array $options = []): ?array
+    {
+        // Проверить, является ли это локальным файлом
+        if (strpos($video, 'storage/memes/') !== false || strpos($video, 'storage/questions/') !== false || strpos($video, 'storage/') === 0) {
+            $filePath = ltrim($video, '/');
+            if (strpos($filePath, 'storage/') === 0) {
+                $filePath = 'storage/app/public/' . substr($filePath, 8); // убрать 'storage/'
+            }
+            
+            $fullPath = base_path($filePath);
+            
+            if (file_exists($fullPath)) {
+                return $this->sendVideoFile($chatId, $fullPath, $caption, $options);
+            }
+        }
+        
+        // Если это URL или file_id
+        $params = array_merge([
+            'chat_id' => $chatId,
+            'video' => $video,
+            'caption' => $caption,
+            'parse_mode' => 'HTML',
+        ], $options);
+
+        return $this->makeRequest('sendVideo', $params);
+    }
+
+    /**
+     * Отправить видео как файл (multipart/form-data)
+     */
+    private function sendVideoFile(int $chatId, string $filePath, string $caption = '', array $options = []): ?array
+    {
+        try {
+            $endpoint = 'sendVideo';
+            $this->checkRateLimit($endpoint);
+            
+            $params = array_merge([
+                'chat_id' => $chatId,
+                'caption' => $caption,
+                'parse_mode' => 'HTML',
+            ], $options);
+            
+            $multipart = [];
+            foreach ($params as $key => $value) {
+                $multipart[] = [
+                    'name' => $key,
+                    'contents' => $value,
+                ];
+            }
+            
+            // Добавить файл
+            $multipart[] = [
+                'name' => 'video',
+                'contents' => fopen($filePath, 'r'),
+                'filename' => basename($filePath),
+            ];
+            
+            $response = $this->client->post("{$this->apiUrl}/{$endpoint}", [
+                'multipart' => $multipart,
+            ]);
+            
+            $result = json_decode($response->getBody()->getContents(), true);
+            
+            if (is_array($result) && isset($result['ok']) && $result['ok']) {
+                return $result['result'] ?? [];
+            }
+            
+            Log::error('Telegram API error sending video file', [
+                'method' => $endpoint,
+                'response' => $result,
+            ]);
+            
+            return null;
+        } catch (\Exception $e) {
+            Log::error('Telegram API request error sending video file', [
+                'method' => 'sendVideo',
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
      * Отправить изображение с inline кнопками
      */
     public function sendPhotoWithButtons(int $chatId, string $photo, string $caption, array $buttons, array $options = []): ?array
@@ -357,6 +442,24 @@ class TelegramService
         ];
 
         return $this->sendPhoto($chatId, $photo, $caption, $options);
+    }
+
+    /**
+     * Получить информацию о файле по file_id
+     */
+    public function getFile(string $fileId): ?array
+    {
+        $params = [
+            'file_id' => $fileId,
+        ];
+
+        $result = $this->makeRequest('getFile', $params);
+        
+        if ($result && isset($result['ok']) && $result['ok']) {
+            return $result['result'] ?? null;
+        }
+        
+        return null;
     }
 
     /**
@@ -570,7 +673,7 @@ class TelegramService
     /**
      * Получить chat_id владельца бота
      */
-    private function getOwnerChatId(): ?int
+    public function getOwnerChatId(): ?int
     {
         // Сначала попробовать из конфига
         $chatId = config('telegram.owner_chat_id');

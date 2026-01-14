@@ -7,7 +7,9 @@ use App\Http\Controllers\Admin\{
     QuestionController,
     StatisticsController,
     ChatController,
-    LogController
+    LogController,
+    MemesController,
+    MemeSuggestionsController
 };
 use Illuminate\Support\Facades\Route;
 
@@ -32,6 +34,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         // Вопросы
         Route::resource('questions', QuestionController::class);
+
+        // Мемы
+        Route::resource('memes', MemesController::class);
+
+        // Предложения мемов (модерация)
+        Route::get('/meme-suggestions', [MemeSuggestionsController::class, 'index'])->name('meme-suggestions.index');
+        Route::get('/meme-suggestions/{memeSuggestion}', [MemeSuggestionsController::class, 'show'])->name('meme-suggestions.show');
+        Route::post('/meme-suggestions/{memeSuggestion}/approve', [MemeSuggestionsController::class, 'approve'])->name('meme-suggestions.approve');
+        Route::post('/meme-suggestions/{memeSuggestion}/reject', [MemeSuggestionsController::class, 'reject'])->name('meme-suggestions.reject');
 
         // Статистика
         Route::get('/statistics', [StatisticsController::class, 'index'])->name('statistics.index');

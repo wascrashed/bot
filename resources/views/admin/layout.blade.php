@@ -68,6 +68,16 @@
         <ul class="sidebar-menu">
             <li><a href="{{ route('admin.dashboard') }}" class="{{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">📊 Панель управления</a></li>
             <li><a href="{{ route('admin.questions.index') }}" class="{{ request()->routeIs('admin.questions.*') ? 'active' : '' }}">❓ Вопросы</a></li>
+            <li><a href="{{ route('admin.memes.index') }}" class="{{ request()->routeIs('admin.memes.*') ? 'active' : '' }}">😄 Мемы</a></li>
+            <li><a href="{{ route('admin.meme-suggestions.index') }}" class="{{ request()->routeIs('admin.meme-suggestions.*') ? 'active' : '' }}">
+                📥 Предложения мемов
+                @php
+                    $pendingCount = \App\Models\MemeSuggestion::where('status', 'pending')->count();
+                @endphp
+                @if($pendingCount > 0)
+                    <span class="badge badge-warning" style="margin-left: 5px;">{{ $pendingCount }}</span>
+                @endif
+            </a></li>
             <li><a href="{{ route('admin.statistics.index') }}" class="{{ request()->routeIs('admin.statistics.*') ? 'active' : '' }}">📈 Статистика</a></li>
             <li><a href="{{ route('admin.chats.index') }}" class="{{ request()->routeIs('admin.chats.*') ? 'active' : '' }}">💬 Чаты</a></li>
             <li><a href="{{ route('admin.logs.index') }}" class="{{ request()->routeIs('admin.logs.*') ? 'active' : '' }}">📋 Логи</a></li>
