@@ -1434,20 +1434,20 @@ class TelegramWebhookController extends Controller
             // В Telegram: личные чаты имеют положительный chat_id, группы - отрицательный
             $isPrivateChat = $chatId > 0;
 
-            // В группе - только краткая информация: ник + рейтинг (как в Dotabuff)
-            if ($chatId < 0) {
-                $nickname = $profile->game_nickname ?? ($from['first_name'] ?? 'Пользователь');
-                $rank = $profile->getFormattedRank();
-                $message = "<b>{$nickname}</b> {$rank}";
-                $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
-                return; // ВАЖНО: выходим сразу, не показываем полный профиль
+            // Синхронизировать данные с Dotabuff (если прошло больше часа)
+            if ($profile->dotabuff_url) {
+                if (!$profile->dotabuff_last_sync || $profile->dotabuff_last_sync->addHour()->isPast()) {
+                    $dotabuffData = $dotabuffService->getPlayerData($profile->dotabuff_url);
+                    if ($dotabuffData) {
+                        $profile->dotabuff_data = $dotabuffData;
+                        $profile->dotabuff_last_sync = now();
+                        $profile->save();
+                    }
+                }
             }
 
-            // В личном чате - полная информация
-            $message = "👤 <b>Ваш профиль</b>\n\n";
-
-            // ID
-            $message .= "🆔 <b>ID:</b> <code>{$userId}</code>\n";
+            // Формируем профиль (одинаковый для группы и личного чата)
+            $message = "";
 
             // Имя
             $firstName = $from['first_name'] ?? 'Пользователь';
@@ -1471,18 +1471,6 @@ class TelegramWebhookController extends Controller
             $message .= "🏆 <b>Рейтинг в боте:</b>\n";
             $message .= "{$profile->getFormattedRank()}\n";
             
-            // Синхронизировать данные с Dotabuff (если прошло больше часа)
-            if ($profile->dotabuff_url) {
-                if (!$profile->dotabuff_last_sync || $profile->dotabuff_last_sync->addHour()->isPast()) {
-                    $dotabuffData = $dotabuffService->getPlayerData($profile->dotabuff_url);
-                    if ($dotabuffData) {
-                        $profile->dotabuff_data = $dotabuffData;
-                        $profile->dotabuff_last_sync = now();
-                        $profile->save();
-                    }
-                }
-            }
-            
             // MMR из Dotabuff или очки бота
             $mmrValue = null;
             if ($profile->dotabuff_data && isset($profile->dotabuff_data['mmr'])) {
@@ -1496,7 +1484,7 @@ class TelegramWebhookController extends Controller
                 $message .= "📈 <b>MMR:</b> " . number_format($profile->rank_points) . "\n";
             }
 
-            // Dotabuff (кликабельный ник)
+            // Dotabuff (кликабельный ник и звание)
             if ($profile->dotabuff_url) {
                 // Показываем кликабельный ник вместо ссылки
                 $dotabuffNickname = 'Профиль';
@@ -1505,40 +1493,55 @@ class TelegramWebhookController extends Controller
                 }
                 
                 // Используем HTML ссылку для кликабельного ника
-                $message .= "🎮 <b>Dotabuff:</b> <a href=\"{$profile->dotabuff_url}\">{$dotabuffNickname}</a>\n";
+                $message .= "🎮 <b>Dotabuff:</b> <a href=\"{$profile->dotabuff_url}\">{$dotabuffNickname}</a>";
+                
+                // Добавляем звание из Dotabuff, если есть
+                if ($profile->dotabuff_data && isset($profile->dotabuff_data['rank'])) {
+                    $message .= " ({$profile->dotabuff_data['rank']})";
+                }
+                $message .= "\n";
             } else {
                 $message .= "🎮 <b>Dotabuff:</b> Не указан\n";
             }
 
-            $message .= "\n";
+            // В личном чате добавляем ID, настройки и кнопки
+            if ($isPrivateChat) {
+                $fullMessage = "👤 <b>Ваш профиль</b>\n\n";
+                $fullMessage .= "🆔 <b>ID:</b> <code>{$userId}</code>\n\n";
+                $fullMessage .= $message;
+                $fullMessage .= "\n";
+                
+                // Настройки
+                $fullMessage .= "⚙️ <b>Настройки:</b>\n";
+                $showRankStatus = $profile->show_rank_in_name ? "✅ Включено" : "❌ Выключено";
+                $fullMessage .= "Показывать рейтинг рядом с именем: {$showRankStatus}\n\n";
 
-            // Настройки
-            $message .= "⚙️ <b>Настройки:</b>\n";
-            $showRankStatus = $profile->show_rank_in_name ? "✅ Включено" : "❌ Выключено";
-            $message .= "Показывать рейтинг рядом с именем: {$showRankStatus}\n\n";
+                // Получаем username бота для создания ссылки
+                $botInfo = $telegramService->getMe();
+                $botUsername = $botInfo['username'] ?? 'tajdota_quiz_bot';
+                $botUrl = "https://t.me/{$botUsername}?start=profile";
 
-            // Получаем username бота для создания ссылки
-            $botInfo = $telegramService->getMe();
-            $botUsername = $botInfo['username'] ?? 'tajdota_quiz_bot';
-            $botUrl = "https://t.me/{$botUsername}?start=profile";
-
-            // Кнопки: Редактировать профиль (переход в личный чат) и переход на бота
-            $buttons = [
-                [
+                // Кнопки: Редактировать профиль (переход в личный чат) и переход на бота
+                $buttons = [
                     [
-                        'text' => '✏️ Редактировать профиль',
-                        'url' => $botUrl
-                    ]
-                ],
-                [
+                        [
+                            'text' => '✏️ Редактировать профиль',
+                            'url' => $botUrl
+                        ]
+                    ],
                     [
-                        'text' => '🤖 Перейти к боту',
-                        'url' => "https://t.me/{$botUsername}"
-                    ]
-                ],
-            ];
-            
-            $telegramService->sendMessageWithButtons($chatId, $message, $buttons, ['parse_mode' => 'HTML']);
+                        [
+                            'text' => '🤖 Перейти к боту',
+                            'url' => "https://t.me/{$botUsername}"
+                        ]
+                    ],
+                ];
+                
+                $telegramService->sendMessageWithButtons($chatId, $fullMessage, $buttons, ['parse_mode' => 'HTML']);
+            } else {
+                // В группе - только профиль без ID, настроек и кнопок
+                $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+            }
         } catch (\Exception $e) {
             Log::error('Failed to handle profile command', [
                 'chat_id' => $chatId,
