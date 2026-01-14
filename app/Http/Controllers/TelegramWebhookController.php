@@ -169,6 +169,19 @@ class TelegramWebhookController extends Controller
                 if (!empty($text) && preg_match('/^\/(mem|мем)(@\w+)?\s*$/i', $text)) {
                     $this->handleMemCommand($chat['id'], 'private');
                 }
+                
+                // Команда /suggest_mem в личном чате
+                if (!empty($text) && preg_match('/^\/(suggest_mem|предложить_мем|предложить)(@\w+)?\s*$/i', $text)) {
+                    try {
+                        Log::info('📤 /suggest_mem command in private chat', [
+                            'chat_id' => $chat['id'],
+                            'user_id' => $from['id'] ?? null,
+                        ]);
+                    } catch (\Exception $logError) {
+                        // Игнорируем ошибки логирования
+                    }
+                    $this->handleSuggestMemCommand($chat['id'], $from);
+                }
             }
             return; // Не обрабатываем личные сообщения дальше
         }
@@ -918,6 +931,11 @@ class TelegramWebhookController extends Controller
     private function handleSuggestMemCommand(int $chatId, ?array $from): void
     {
         try {
+            Log::info('📤 handleSuggestMemCommand called', [
+                'chat_id' => $chatId,
+                'from_id' => $from['id'] ?? null,
+            ]);
+            
             $telegramService = new TelegramService();
             
             $message = "📤 <b>Предложить мем</b>\n\n";
@@ -935,12 +953,24 @@ class TelegramWebhookController extends Controller
                 ]
             ];
             
-            $telegramService->sendMessageWithButtons($chatId, $message, $buttons);
+            $result = $telegramService->sendMessageWithButtons($chatId, $message, $buttons);
+            
+            if ($result) {
+                Log::info('✅ suggest_mem message sent successfully', [
+                    'chat_id' => $chatId,
+                    'message_id' => $result['message_id'] ?? null,
+                ]);
+            } else {
+                Log::error('❌ Failed to send suggest_mem message', [
+                    'chat_id' => $chatId,
+                ]);
+            }
         } catch (\Exception $e) {
             try {
-                Log::error('Failed to handle suggest_mem command', [
+                Log::error('❌ Failed to handle suggest_mem command', [
                     'chat_id' => $chatId,
                     'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                 ]);
             } catch (\Exception $logError) {
                 // Игнорируем ошибки логирования

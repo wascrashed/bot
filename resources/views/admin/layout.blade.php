@@ -72,7 +72,12 @@
             <li><a href="{{ route('admin.meme-suggestions.index') }}" class="{{ request()->routeIs('admin.meme-suggestions.*') ? 'active' : '' }}">
                 📥 Предложения мемов
                 @php
-                    $pendingCount = \App\Models\MemeSuggestion::where('status', 'pending')->count();
+                    try {
+                        $pendingCount = \App\Models\MemeSuggestion::where('status', 'pending')->count();
+                    } catch (\Exception $e) {
+                        // Таблица еще не создана, скрываем бейдж
+                        $pendingCount = 0;
+                    }
                 @endphp
                 @if($pendingCount > 0)
                     <span class="badge badge-warning" style="margin-left: 5px;">{{ $pendingCount }}</span>
