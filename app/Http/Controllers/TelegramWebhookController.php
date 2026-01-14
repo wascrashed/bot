@@ -149,6 +149,21 @@ class TelegramWebhookController extends Controller
                 
                 // Обработка команд в личном чате
                 $text = trim($message['text'] ?? '');
+                $userId = $from['id'] ?? null;
+                
+                // Сбрасываем флаг предложения мема при любой команде (кроме /suggest_mem)
+                if (!empty($text) && preg_match('/^\/(\w+)(@\w+)?\s*$/i', $text)) {
+                    $command = strtolower(trim(explode('@', $text)[0], '/'));
+                    if ($command !== 'suggest_mem' && $command !== 'предложить_мем' && $command !== 'предложить') {
+                        if ($userId && \Illuminate\Support\Facades\Cache::has("meme_suggestion_active_{$userId}")) {
+                            \Illuminate\Support\Facades\Cache::forget("meme_suggestion_active_{$userId}");
+                            Log::info('🔄 Meme suggestion flag cleared due to command', [
+                                'user_id' => $userId,
+                                'command' => $command,
+                            ]);
+                        }
+                    }
+                }
                 
                 // Команда /chatid или /id
                 if (!empty($text) && preg_match('/^\/(chatid|id|getid)(@\w+)?\s*$/i', $text)) {
@@ -202,6 +217,22 @@ class TelegramWebhookController extends Controller
         
         // Обработка команд
         $text = trim($message['text'] ?? '');
+        
+        // Сбрасываем флаг предложения мема при любой команде (кроме /suggest_mem)
+        if (!empty($text) && preg_match('/^\/(\w+)(@\w+)?\s*$/i', $text) && $from) {
+            $userId = $from['id'] ?? null;
+            $command = strtolower(trim(explode('@', $text)[0], '/'));
+            if ($command !== 'suggest_mem' && $command !== 'предложить_мем' && $command !== 'предложить') {
+                if ($userId && \Illuminate\Support\Facades\Cache::has("meme_suggestion_active_{$userId}")) {
+                    \Illuminate\Support\Facades\Cache::forget("meme_suggestion_active_{$userId}");
+                    Log::info('🔄 Meme suggestion flag cleared due to command in group', [
+                        'user_id' => $userId,
+                        'command' => $command,
+                        'chat_id' => $chatId,
+                    ]);
+                }
+            }
+        }
         
         // Команда /chatid или /id
         if (!empty($text) && preg_match('/^\/(chatid|id|getid)(@\w+)?\s*$/i', $text)) {
@@ -574,14 +605,44 @@ class TelegramWebhookController extends Controller
         $chatType = $chat['type'] ?? null;
         $chatId = $chat['id'] ?? null;
         
+        // Сбрасываем флаг предложения мема при любом другом callback query
+        // (кроме suggest_mem_button, который устанавливает флаг)
+        if ($data !== 'suggest_mem_button' && isset($from['id'])) {
+            $userId = $from['id'];
+            $hadFlag = \Illuminate\Support\Facades\Cache::has("meme_suggestion_active_{$userId}");
+            if ($hadFlag) {
+                \Illuminate\Support\Facades\Cache::forget("meme_suggestion_active_{$userId}");
+                Log::info('🔄 Meme suggestion flag cleared due to other callback', [
+                    'user_id' => $userId,
+                    'callback_data' => $data,
+                ]);
+            }
+        }
+        
         // Обработка кнопки "Предложить мем"
         if ($data === 'suggest_mem_button') {
             try {
+                $userId = $from['id'] ?? null;
+                
                 Log::info('📤 suggest_mem_button clicked', [
                     'chat_id' => $chatId,
                     'chat_type' => $chatType,
-                    'user_id' => $from['id'] ?? null,
+                    'user_id' => $userId,
                 ]);
+                
+                if (!$userId) {
+                    Log::warning('No user ID for suggest_mem_button');
+                    return;
+                }
+                
+                // Устанавливаем флаг, что пользователь готов предложить мем (TTL 10 минут)
+                \Illuminate\Support\Facades\Cache::put(
+                    "meme_suggestion_active_{$userId}",
+                    true,
+                    now()->addMinutes(10)
+                );
+                
+                Log::info('✅ Meme suggestion flag set for user', ['user_id' => $userId]);
                 
                 $telegramService = new TelegramService();
                 $telegramService->answerCallbackQuery($callbackQueryId, 'Отправьте фото или видео для предложения мема');
@@ -589,7 +650,8 @@ class TelegramWebhookController extends Controller
                 $message = "📤 <b>Предложить мем</b>\n\n";
                 $message .= "Отправьте фото или видео, и ваш мем будет отправлен на модерацию.\n\n";
                 $message .= "💡 <i>Администратор рассмотрит ваше предложение и либо добавит мем, либо отклонит его.</i>\n\n";
-                $message .= "⚠️ <i>Максимум 5 предложений в час</i>";
+                $message .= "⚠️ <i>Максимум 5 предложений в час</i>\n";
+                $message .= "⏱️ <i>У вас есть 10 минут, чтобы отправить мем</i>";
                 
                 $result = $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
                 
@@ -962,15 +1024,17 @@ class TelegramWebhookController extends Controller
     private function handleSuggestMemCommand(int $chatId, ?array $from): void
     {
         try {
+            $userId = $from['id'] ?? null;
+            
             Log::info('📤 handleSuggestMemCommand called', [
                 'chat_id' => $chatId,
-                'from_id' => $from['id'] ?? null,
+                'from_id' => $userId,
             ]);
             
             $telegramService = new TelegramService();
             
             $message = "📤 <b>Предложить мем</b>\n\n";
-            $message .= "Нажмите кнопку ниже, чтобы предложить мем, или просто отправьте фото/видео.\n\n";
+            $message .= "Нажмите кнопку ниже, чтобы предложить мем.\n\n";
             $message .= "💡 <i>Администратор рассмотрит ваше предложение и либо добавит мем, либо отклонит его.</i>\n\n";
             $message .= "⚠️ <i>Максимум 5 предложений в час</i>";
             
@@ -1027,6 +1091,20 @@ class TelegramWebhookController extends Controller
                 return;
             }
             
+            $userId = $from['id'];
+            
+            // Проверяем, активировал ли пользователь режим предложения мема
+            $isActive = \Illuminate\Support\Facades\Cache::get("meme_suggestion_active_{$userId}", false);
+            
+            if (!$isActive) {
+                Log::info('⚠️ Meme suggestion ignored - user did not activate suggestion mode', [
+                    'user_id' => $userId,
+                    'chat_id' => $chatId,
+                ]);
+                // Не отправляем сообщение пользователю, чтобы не спамить
+                return;
+            }
+            
             $telegramService = new TelegramService();
             $fileId = null;
             $mediaType = null;
@@ -1051,11 +1129,14 @@ class TelegramWebhookController extends Controller
             }
             
             // Проверяем, не слишком ли много предложений от этого пользователя (защита от спама)
-            $recentSuggestions = MemeSuggestion::where('user_id', $from['id'])
+            $recentSuggestions = MemeSuggestion::where('user_id', $userId)
                 ->where('created_at', '>=', now()->subHours(1))
                 ->count();
             
             if ($recentSuggestions >= 5) {
+                // Сбрасываем флаг при превышении лимита
+                \Illuminate\Support\Facades\Cache::forget("meme_suggestion_active_{$userId}");
+                
                 $telegramService->sendMessage(
                     $chatId,
                     "⏳ Вы отправили слишком много предложений за последний час. Пожалуйста, подождите.",
@@ -1066,12 +1147,20 @@ class TelegramWebhookController extends Controller
             
             // Сохраняем предложение
             $suggestion = MemeSuggestion::create([
-                'user_id' => $from['id'],
+                'user_id' => $userId,
                 'username' => $from['username'] ?? null,
                 'first_name' => $from['first_name'] ?? null,
                 'media_type' => $mediaType,
                 'file_id' => $fileId,
                 'status' => MemeSuggestion::STATUS_PENDING,
+            ]);
+            
+            // Сбрасываем флаг после успешного создания предложения
+            \Illuminate\Support\Facades\Cache::forget("meme_suggestion_active_{$userId}");
+            
+            Log::info('✅ Meme suggestion created and flag cleared', [
+                'suggestion_id' => $suggestion->id,
+                'user_id' => $userId,
             ]);
             
             // Уведомить админа о новом предложении
