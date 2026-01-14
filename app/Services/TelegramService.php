@@ -490,9 +490,15 @@ class TelegramService
 
         $result = $this->makeRequest('getFile', $params);
         
-        if ($result && isset($result['ok']) && $result['ok']) {
-            return $result['result'] ?? null;
+        // makeRequest уже возвращает result напрямую (без обертки ok)
+        if ($result && is_array($result)) {
+            return $result;
         }
+        
+        Log::warning('getFile returned null or invalid result', [
+            'file_id' => $fileId,
+            'result' => $result,
+        ]);
         
         return null;
     }

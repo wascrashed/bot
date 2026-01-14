@@ -43,10 +43,32 @@ class MemeSuggestionsController extends Controller
             try {
                 $telegramService = new TelegramService();
                 $fileInfo = $telegramService->getFile($memeSuggestion->file_id);
-                $filePath = $fileInfo['file_path'] ?? null;
+                
+                if ($fileInfo && isset($fileInfo['file_path'])) {
+                    $filePath = $fileInfo['file_path'];
+                    Log::info('File path retrieved for preview', [
+                        'suggestion_id' => $memeSuggestion->id,
+                        'file_path' => $filePath,
+                        'media_type' => $memeSuggestion->media_type,
+                    ]);
+                } else {
+                    Log::warning('File path not found in Telegram response', [
+                        'suggestion_id' => $memeSuggestion->id,
+                        'file_id' => $memeSuggestion->file_id,
+                        'response' => $fileInfo,
+                    ]);
+                }
             } catch (\Exception $e) {
-                // Игнорируем ошибки
+                Log::error('Failed to get file path for preview', [
+                    'suggestion_id' => $memeSuggestion->id,
+                    'file_id' => $memeSuggestion->file_id,
+                    'error' => $e->getMessage(),
+                ]);
             }
+        } else {
+            Log::warning('No file_id for meme suggestion', [
+                'suggestion_id' => $memeSuggestion->id,
+            ]);
         }
         
         return view('admin.meme-suggestions.show', compact('memeSuggestion', 'filePath'));

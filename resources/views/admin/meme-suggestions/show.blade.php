@@ -77,17 +77,47 @@
         <h3>Превью мема</h3>
         <div style="margin-top: 15px;">
             @if($memeSuggestion->media_type == 'video')
-                <p>🎥 Видео (file_id: {{ $memeSuggestion->file_id }})</p>
-                <p><small class="text-muted">Для просмотра видео используйте Telegram API или отправьте мем пользователю</small></p>
+                @if($filePath)
+                    <div style="max-width: 800px;">
+                        <video controls style="max-width: 100%; max-height: 600px; border: 1px solid #ddd; border-radius: 8px; background: #000;">
+                            <source src="https://api.telegram.org/file/bot{{ config('telegram.bot_token') }}/{{ $filePath }}" type="video/mp4">
+                            <source src="https://api.telegram.org/file/bot{{ config('telegram.bot_token') }}/{{ $filePath }}" type="video/webm">
+                            Ваш браузер не поддерживает видео.
+                        </video>
+                        <p style="margin-top: 10px;">
+                            <a href="https://api.telegram.org/file/bot{{ config('telegram.bot_token') }}/{{ $filePath }}" 
+                               target="_blank" 
+                               class="btn btn-primary btn-sm">
+                                📥 Скачать видео
+                            </a>
+                        </p>
+                    </div>
+                @else
+                    <div class="alert alert-warning">
+                        <p>🎥 Видео (file_id: {{ $memeSuggestion->file_id }})</p>
+                        <p><small>Не удалось получить путь к файлу для превью. Видео будет доступно после одобрения мема.</small></p>
+                    </div>
+                @endif
             @else
                 @if($filePath)
-                    <img src="https://api.telegram.org/file/bot{{ config('telegram.bot_token') }}/{{ $filePath }}" 
-                         alt="Meme preview" 
-                         style="max-width: 500px; max-height: 500px; border: 1px solid #ddd; border-radius: 8px;"
-                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'500\' height=\'500\'%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\'%3EНе удалось загрузить%3C/text%3E%3C/svg%3E';">
+                    <div style="max-width: 800px;">
+                        <img src="https://api.telegram.org/file/bot{{ config('telegram.bot_token') }}/{{ $filePath }}" 
+                             alt="Meme preview" 
+                             style="max-width: 100%; max-height: 600px; border: 1px solid #ddd; border-radius: 8px; display: block;"
+                             onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'500\' height=\'500\'%3E%3Crect width=\'500\' height=\'500\' fill=\'%23f0f0f0\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' dominant-baseline=\'middle\' font-family=\'Arial\' font-size=\'18\' fill=\'%23999\'%3EНе удалось загрузить превью%3C/text%3E%3C/svg%3E';">
+                        <p style="margin-top: 10px;">
+                            <a href="https://api.telegram.org/file/bot{{ config('telegram.bot_token') }}/{{ $filePath }}" 
+                               target="_blank" 
+                               class="btn btn-primary btn-sm">
+                                🔍 Открыть в полном размере
+                            </a>
+                        </p>
+                    </div>
                 @else
-                    <p class="text-muted">Не удалось загрузить превью. File ID: {{ $memeSuggestion->file_id }}</p>
-                    <p><small>Превью будет доступно после одобрения мема</small></p>
+                    <div class="alert alert-warning">
+                        <p class="text-muted">Не удалось загрузить превью. File ID: {{ $memeSuggestion->file_id }}</p>
+                        <p><small>Попробуйте обновить страницу. Если проблема сохраняется, проверьте настройки бота.</small></p>
+                    </div>
                 @endif
             @endif
         </div>
