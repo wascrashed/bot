@@ -202,7 +202,31 @@ class TelegramWebhookController extends Controller
                 
                 // Команда /profile в личном чате
                 if (!empty($text) && preg_match('/^\/(profile|профиль)(@\w+)?\s*$/i', $text)) {
-                    $this->handleProfileCommand($chat['id'], $from);
+                    // Проверяем, есть ли ответ на сообщение
+                    $replyTo = $message['reply_to_message'] ?? null;
+                    $targetUserId = null;
+                    
+                    if ($replyTo && isset($replyTo['from'])) {
+                        // Если есть ответ, показываем профиль того, на кого ответили
+                        $targetUserId = $replyTo['from']['id'] ?? null;
+                    } else {
+                        // Иначе используем стандартную логику (с упоминанием или свой профиль)
+                        $targetUserId = $this->extractTargetUserId($message, $text);
+                    }
+                    
+                    // Передаем reply_to_message для получения данных пользователя
+                    $this->handleProfileCommand($chat['id'], $from, $targetUserId, $replyTo);
+                }
+                
+                // Ответ на сообщение с текстом "profile" (без слеша)
+                if (!empty($text) && preg_match('/^profile\s*$/i', trim($text))) {
+                    $replyTo = $message['reply_to_message'] ?? null;
+                    if ($replyTo && isset($replyTo['from'])) {
+                        $targetUserId = $replyTo['from']['id'] ?? null;
+                        if ($targetUserId) {
+                            $this->handleProfileCommand($chat['id'], $from, $targetUserId, $replyTo);
+                        }
+                    }
                 }
                 
                 // Команда /top в личном чате
@@ -227,7 +251,7 @@ class TelegramWebhookController extends Controller
                             ['parse_mode' => 'HTML']
                         );
                         // Показываем обновленный профиль
-                        $this->handleProfileCommand($chat['id'], $from);
+                        $this->handleProfileCommand($chat['id'], $from, null, null);
                         return;
                     }
                     
@@ -263,7 +287,7 @@ class TelegramWebhookController extends Controller
                             ['parse_mode' => 'HTML']
                         );
                         // Показываем обновленный профиль
-                        $this->handleProfileCommand($chat['id'], $from);
+                        $this->handleProfileCommand($chat['id'], $from, null, null);
                         return;
                     }
                 }
@@ -345,8 +369,33 @@ class TelegramWebhookController extends Controller
         
         // Команда /profile в группе
         if (!empty($text) && preg_match('/^\/(profile|профиль)(@\w+)?\s*$/i', $text)) {
-            $this->handleProfileCommand($chatId, $from);
+            // Проверяем, есть ли ответ на сообщение
+            $replyTo = $message['reply_to_message'] ?? null;
+            $targetUserId = null;
+            
+            if ($replyTo && isset($replyTo['from'])) {
+                // Если есть ответ, показываем профиль того, на кого ответили
+                $targetUserId = $replyTo['from']['id'] ?? null;
+            } else {
+                // Иначе используем стандартную логику (с упоминанием или свой профиль)
+                $targetUserId = $this->extractTargetUserId($message, $text);
+            }
+            
+            // Передаем reply_to_message для получения данных пользователя
+            $this->handleProfileCommand($chatId, $from, $targetUserId, $replyTo);
             return; // Не обрабатываем дальше
+        }
+        
+        // Ответ на сообщение с текстом "profile" (без слеша) в группе
+        if (!empty($text) && preg_match('/^profile\s*$/i', trim($text))) {
+            $replyTo = $message['reply_to_message'] ?? null;
+            if ($replyTo && isset($replyTo['from'])) {
+                $targetUserId = $replyTo['from']['id'] ?? null;
+                if ($targetUserId) {
+                    $this->handleProfileCommand($chatId, $from, $targetUserId, $replyTo);
+                    return;
+                }
+            }
         }
         
         // Команда /top в группе
@@ -1410,18 +1459,69 @@ class TelegramWebhookController extends Controller
     }
 
     /**
+     * Извлечь ID целевого пользователя из команды или упоминания
+     */
+    private function extractTargetUserId(array $message, string $text): ?int
+    {
+        // Проверяем упоминание в тексте команды (например, /profile @username)
+        if (preg_match('/@(\w+)/', $text, $matches)) {
+            $mentionedUsername = $matches[1];
+            
+            // Ищем упоминание в entities сообщения
+            $entities = $message['entities'] ?? [];
+            foreach ($entities as $entity) {
+                if (($entity['type'] ?? '') === 'mention') {
+                    $offset = $entity['offset'] ?? 0;
+                    $length = $entity['length'] ?? 0;
+                    $entityText = substr($text, $offset, $length);
+                    
+                    if ($entityText === '@' . $mentionedUsername) {
+                        // Если есть user в entity, используем его ID
+                        if (isset($entity['user']['id'])) {
+                            return $entity['user']['id'];
+                        }
+                    }
+                }
+            }
+        }
+        
+        return null; // Если упоминания нет, возвращаем null (будет показан свой профиль)
+    }
+
+    /**
      * Обработка команды /profile (просмотр профиля)
      */
-    private function handleProfileCommand(int $chatId, ?array $from): void
+    private function handleProfileCommand(int $chatId, ?array $from, ?int $targetUserId = null, ?array $replyToMessage = null): void
     {
         try {
             if (!$from) {
                 return;
             }
 
-            $userId = $from['id'] ?? null;
+            // Если указан targetUserId, показываем его профиль, иначе свой
+            $userId = $targetUserId ?? ($from['id'] ?? null);
             if (!$userId) {
                 return;
+            }
+            
+            // Для получения данных целевого пользователя используем его ID
+            // Но для отображения имени используем данные из from, если это свой профиль
+            $isOwnProfile = ($targetUserId === null || $targetUserId === $from['id']);
+            
+            // Получаем данные целевого пользователя
+            $targetUser = $from; // По умолчанию используем данные отправителя
+            if (!$isOwnProfile) {
+                // Если это не свой профиль, используем данные из reply_to_message
+                if ($replyToMessage && isset($replyToMessage['from'])) {
+                    $targetUser = $replyToMessage['from'];
+                } else {
+                    // Если данных нет, используем базовые данные
+                    $targetUser = [
+                        'id' => $userId,
+                        'first_name' => 'Пользователь',
+                        'username' => null,
+                    ];
+                }
             }
 
             $profile = UserProfile::getOrCreate($userId);
@@ -1450,7 +1550,7 @@ class TelegramWebhookController extends Controller
             $message = "";
 
             // Имя
-            $firstName = $from['first_name'] ?? 'Пользователь';
+            $firstName = $targetUser['first_name'] ?? 'Пользователь';
             $message .= "👤 <b>Имя:</b> {$firstName}\n";
 
             // Ник в игре
@@ -1458,7 +1558,7 @@ class TelegramWebhookController extends Controller
             $message .= "🎮 <b>Ник в игре:</b> {$gameNickname}\n";
 
             // Юзернейм
-            $username = $from['username'] ?? null;
+            $username = $targetUser['username'] ?? null;
             if ($username) {
                 $message .= "📱 <b>Username:</b> @{$username}\n";
             } else {
@@ -1488,18 +1588,26 @@ class TelegramWebhookController extends Controller
             if ($profile->dotabuff_url) {
                 // Показываем кликабельный ник вместо ссылки
                 $dotabuffNickname = 'Профиль';
-                if ($profile->dotabuff_data && isset($profile->dotabuff_data['nickname'])) {
+                if ($profile->dotabuff_data && isset($profile->dotabuff_data['nickname']) && !empty($profile->dotabuff_data['nickname'])) {
                     $dotabuffNickname = $profile->dotabuff_data['nickname'];
+                } else {
+                    // Если ник не найден, логируем для отладки
+                    Log::warning('Dotabuff nickname not found in profile data', [
+                        'user_id' => $userId,
+                        'dotabuff_url' => $profile->dotabuff_url,
+                        'dotabuff_data' => $profile->dotabuff_data,
+                    ]);
                 }
                 
                 // Используем HTML ссылку для кликабельного ника
-                $message .= "🎮 <b>Dotabuff:</b> <a href=\"{$profile->dotabuff_url}\">{$dotabuffNickname}</a>";
+                $dotabuffText = $dotabuffNickname;
                 
                 // Добавляем звание из Dotabuff, если есть
-                if ($profile->dotabuff_data && isset($profile->dotabuff_data['rank'])) {
-                    $message .= " ({$profile->dotabuff_data['rank']})";
+                if ($profile->dotabuff_data && isset($profile->dotabuff_data['rank']) && !empty($profile->dotabuff_data['rank'])) {
+                    $dotabuffText .= " ({$profile->dotabuff_data['rank']})";
                 }
-                $message .= "\n";
+                
+                $message .= "🎮 <b>Dotabuff:</b> <a href=\"{$profile->dotabuff_url}\">{$dotabuffText}</a>\n";
             } else {
                 $message .= "🎮 <b>Dotabuff:</b> Не указан\n";
             }
@@ -1702,12 +1810,12 @@ class TelegramWebhookController extends Controller
                     $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
                     
                     // Обновляем профиль
-                    $this->handleProfileCommand($chatId, $from);
+                    $this->handleProfileCommand($chatId, $from, null, null);
                     break;
 
                 case 'profile_refresh':
                     // Обновляем профиль
-                    $this->handleProfileCommand($chatId, $from);
+                    $this->handleProfileCommand($chatId, $from, null, null);
                     break;
 
                 default:

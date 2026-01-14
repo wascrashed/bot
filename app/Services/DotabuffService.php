@@ -110,16 +110,35 @@ class DotabuffService
             
             // Парсим ник пользователя (обычно в заголовке страницы или в h1)
             // Ищем в различных местах страницы
-            if (preg_match('/<h1[^>]*>([^<]+)<\/h1>/i', $html, $matches)) {
+            // Вариант 1: В заголовке h1 внутри player-header
+            if (preg_match('/<header[^>]*class="[^"]*player-header[^"]*"[^>]*>.*?<h1[^>]*>([^<]+)<\/h1>/is', $html, $matches)) {
                 $data['nickname'] = trim($matches[1]);
-            } elseif (preg_match('/<title>([^<]+)<\/title>/i', $html, $matches)) {
-                // Если в title есть формат "Player Name - Dotabuff"
+            }
+            // Вариант 2: Прямой h1
+            elseif (preg_match('/<h1[^>]*class="[^"]*header-content-title[^"]*"[^>]*>([^<]+)<\/h1>/i', $html, $matches)) {
+                $data['nickname'] = trim($matches[1]);
+            }
+            // Вариант 3: В title страницы
+            elseif (preg_match('/<title>([^<]+)<\/title>/i', $html, $matches)) {
                 $title = trim($matches[1]);
-                if (preg_match('/^([^-]+)/', $title, $titleMatches)) {
+                // Формат: "Player Name - Dotabuff" или "Player Name - Overview - Dotabuff"
+                if (preg_match('/^([^-]+?)(?:\s*-\s*(?:Overview|Dotabuff))?$/i', $title, $titleMatches)) {
                     $data['nickname'] = trim($titleMatches[1]);
                 }
-            } elseif (preg_match('/player-header[^>]*>.*?<h1[^>]*>([^<]+)<\/h1>/is', $html, $matches)) {
-                $data['nickname'] = trim($matches[1]);
+            }
+            // Вариант 4: В мета-тегах или других местах
+            elseif (preg_match('/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i', $html, $matches)) {
+                $ogTitle = trim($matches[1]);
+                if (preg_match('/^([^-]+)/', $ogTitle, $ogMatches)) {
+                    $data['nickname'] = trim($ogMatches[1]);
+                }
+            }
+            
+            // Логируем результат парсинга ника
+            if ($data['nickname']) {
+                Log::info('Dotabuff nickname parsed', ['nickname' => $data['nickname']]);
+            } else {
+                Log::warning('Dotabuff nickname not found', ['html_length' => strlen($html)]);
             }
             
             // Парсим MMR (если доступен)
@@ -128,17 +147,30 @@ class DotabuffService
             }
             
             // Парсим ранг (если доступен) - ищем в различных форматах
-            // Стандартный формат: Rank: Archon III
-            if (preg_match('/rank[^>]*>([^<]+)</i', $html, $matches)) {
-                $data['rank'] = trim($matches[1]);
-            } elseif (preg_match('/rank-tier[^>]*title="([^"]+)"/i', $html, $matches)) {
-                $data['rank'] = trim($matches[1]);
-            } elseif (preg_match('/oldtitle="([^"]*ранг[^"]*)"/i', $html, $matches)) {
-                // Формат: "Место: Рыцарь III"
-                $rankText = $matches[1];
+            // Вариант 1: В атрибуте oldtitle или title у rank-tier
+            if (preg_match('/<div[^>]*class="[^"]*rank-tier[^"]*"[^>]*(?:oldtitle|title)="([^"]+)"/i', $html, $matches)) {
+                $rankText = trim($matches[1]);
+                // Формат: "Место: Рыцарь III" или просто "Рыцарь III"
                 if (preg_match('/:\s*([^"]+)/', $rankText, $rankMatches)) {
                     $data['rank'] = trim($rankMatches[1]);
+                } else {
+                    $data['rank'] = $rankText;
                 }
+            }
+            // Вариант 2: В тексте рядом с rank-tier
+            elseif (preg_match('/rank-tier[^>]*>.*?([А-Яа-яЁё\s]+(?:I{1,3}|[IVX]+))[^<]*</is', $html, $matches)) {
+                $data['rank'] = trim($matches[1]);
+            }
+            // Вариант 3: Стандартный формат в тексте
+            elseif (preg_match('/Rank[^>]*>([^<]+)</i', $html, $matches)) {
+                $data['rank'] = trim($matches[1]);
+            }
+            
+            // Логируем результат парсинга ранга
+            if ($data['rank']) {
+                Log::info('Dotabuff rank parsed', ['rank' => $data['rank']]);
+            } else {
+                Log::warning('Dotabuff rank not found');
             }
             
             // Парсим иконку ранга (если доступна)
