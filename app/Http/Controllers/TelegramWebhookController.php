@@ -1429,37 +1429,32 @@ class TelegramWebhookController extends Controller
 
             $telegramService = new TelegramService();
             $dotabuffService = new DotabuffService();
+            
+            // Определяем тип чата (личный или группа)
+            $isPrivateChat = $chatId > 0;
 
+            // В группе - только краткая информация: ник + рейтинг (как в Dotabuff)
+            if (!$isPrivateChat) {
+                $nickname = $profile->game_nickname ?? ($from['first_name'] ?? 'Пользователь');
+                $rank = $profile->getFormattedRank();
+                $message = "<b>{$nickname}</b> {$rank}";
+                $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
+                return;
+            }
+
+            // В личном чате - полная информация
             $message = "👤 <b>Ваш профиль</b>\n\n";
 
-            // Основная информация
-            $firstName = $from['first_name'] ?? 'Пользователь';
-            $username = $from['username'] ?? null;
-            $message .= "🆔 <b>ID:</b> <code>{$userId}</code>\n";
-            $message .= "👤 <b>Имя:</b> {$firstName}\n";
-            if ($username) {
-                $message .= "📱 <b>Username:</b> @{$username}\n";
-            }
-
             // Ник в игре
-            if ($profile->game_nickname) {
-                $message .= "🎮 <b>Ник в игре:</b> {$profile->game_nickname}\n";
-            }
-
-            $message .= "\n";
+            $nickname = $profile->game_nickname ?? ($from['first_name'] ?? 'Пользователь');
+            $message .= "🎮 <b>Ник:</b> {$nickname}\n\n";
 
             // Рейтинг бота
             $message .= "🏆 <b>Рейтинг в боте:</b>\n";
             $message .= "{$profile->getFormattedRank()}\n";
-            $message .= "📊 <b>Очки:</b> " . number_format($profile->rank_points) . "\n";
-            $message .= "⭐ <b>Всего очков:</b> " . number_format($profile->total_points) . "\n\n";
-
-            // Dotabuff
+            
+            // Синхронизировать данные с Dotabuff (если прошло больше часа)
             if ($profile->dotabuff_url) {
-                $message .= "🎮 <b>Dotabuff:</b>\n";
-                $message .= "🔗 " . $profile->dotabuff_url . "\n";
-                
-                // Синхронизировать данные с Dotabuff (если прошло больше часа)
                 if (!$profile->dotabuff_last_sync || $profile->dotabuff_last_sync->addHour()->isPast()) {
                     $dotabuffData = $dotabuffService->getPlayerData($profile->dotabuff_url);
                     if ($dotabuffData) {
@@ -1468,18 +1463,42 @@ class TelegramWebhookController extends Controller
                         $profile->save();
                     }
                 }
+            }
+            
+            // MMR из Dotabuff или очки бота
+            $mmrValue = null;
+            if ($profile->dotabuff_data && isset($profile->dotabuff_data['mmr'])) {
+                $mmrValue = $profile->dotabuff_data['mmr'];
+            }
+            
+            // Показываем MMR из Dotabuff, если есть, иначе очки бота
+            if ($mmrValue !== null) {
+                $message .= "📈 <b>MMR:</b> " . number_format($mmrValue) . "\n";
+            } else {
+                $message .= "📊 <b>Очки:</b> " . number_format($profile->rank_points) . "\n";
+            }
+            $message .= "\n";
+
+            // Dotabuff
+            if ($profile->dotabuff_url) {
+                $message .= "🎮 <b>Dotabuff:</b>\n";
+                
+                // Показываем кликабельный ник вместо ссылки
+                $dotabuffNickname = 'Профиль';
+                if ($profile->dotabuff_data && isset($profile->dotabuff_data['nickname'])) {
+                    $dotabuffNickname = $profile->dotabuff_data['nickname'];
+                }
+                
+                // Используем HTML ссылку для кликабельного ника
+                $message .= "🔗 <a href=\"{$profile->dotabuff_url}\">{$dotabuffNickname}</a>\n";
                 
                 if ($profile->dotabuff_data) {
-                    if (isset($profile->dotabuff_data['mmr'])) {
-                        $message .= "📈 <b>MMR:</b> " . number_format($profile->dotabuff_data['mmr']) . "\n";
-                    }
                     if (isset($profile->dotabuff_data['rank'])) {
                         $message .= "🏅 <b>Ранг:</b> {$profile->dotabuff_data['rank']}\n";
                     }
                 }
                 $message .= "\n";
             }
-
 
             // Настройки
             $message .= "⚙️ <b>Настройки:</b>\n";
@@ -1502,7 +1521,7 @@ class TelegramWebhookController extends Controller
                     ['text' => '🔄 Обновить профиль', 'callback_data' => 'profile_refresh'],
                 ],
             ];
-
+            
             $telegramService->sendMessageWithButtons($chatId, $message, $buttons, ['parse_mode' => 'HTML']);
         } catch (\Exception $e) {
             Log::error('Failed to handle profile command', [
@@ -1719,6 +1738,9 @@ class TelegramWebhookController extends Controller
                 $message .= "{$medal} <b>#{$place}</b> {$rank}\n";
                 $message .= "   👤 {$name} - <b>{$points} очков</b>\n\n";
             }
+            
+            // Добавляем информацию о том, как посмотреть свой профиль
+            $message .= "💡 <i>Используйте /profile чтобы посмотреть свой профиль</i>";
             
             $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
         } catch (\Exception $e) {

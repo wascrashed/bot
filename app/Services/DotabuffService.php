@@ -105,20 +105,46 @@ class DotabuffService
                 'mmr' => null,
                 'rank' => null,
                 'rank_icon' => null,
+                'nickname' => null,
             ];
+            
+            // Парсим ник пользователя (обычно в заголовке страницы или в h1)
+            // Ищем в различных местах страницы
+            if (preg_match('/<h1[^>]*>([^<]+)<\/h1>/i', $html, $matches)) {
+                $data['nickname'] = trim($matches[1]);
+            } elseif (preg_match('/<title>([^<]+)<\/title>/i', $html, $matches)) {
+                // Если в title есть формат "Player Name - Dotabuff"
+                $title = trim($matches[1]);
+                if (preg_match('/^([^-]+)/', $title, $titleMatches)) {
+                    $data['nickname'] = trim($titleMatches[1]);
+                }
+            } elseif (preg_match('/player-header[^>]*>.*?<h1[^>]*>([^<]+)<\/h1>/is', $html, $matches)) {
+                $data['nickname'] = trim($matches[1]);
+            }
             
             // Парсим MMR (если доступен)
             if (preg_match('/Solo MMR[^>]*>(\d+)/i', $html, $matches)) {
                 $data['mmr'] = (int)$matches[1];
             }
             
-            // Парсим ранг (если доступен)
-            if (preg_match('/Rank[^>]*>([^<]+)</i', $html, $matches)) {
+            // Парсим ранг (если доступен) - ищем в различных форматах
+            // Стандартный формат: Rank: Archon III
+            if (preg_match('/rank[^>]*>([^<]+)</i', $html, $matches)) {
                 $data['rank'] = trim($matches[1]);
+            } elseif (preg_match('/rank-tier[^>]*title="([^"]+)"/i', $html, $matches)) {
+                $data['rank'] = trim($matches[1]);
+            } elseif (preg_match('/oldtitle="([^"]*ранг[^"]*)"/i', $html, $matches)) {
+                // Формат: "Место: Рыцарь III"
+                $rankText = $matches[1];
+                if (preg_match('/:\s*([^"]+)/', $rankText, $rankMatches)) {
+                    $data['rank'] = trim($rankMatches[1]);
+                }
             }
             
             // Парсим иконку ранга (если доступна)
             if (preg_match('/rank-icon[^>]*src="([^"]+)"/i', $html, $matches)) {
+                $data['rank_icon'] = $matches[1];
+            } elseif (preg_match('/rank-tier[^>]*src="([^"]+)"/i', $html, $matches)) {
                 $data['rank_icon'] = $matches[1];
             }
             
