@@ -32,9 +32,13 @@ class Kernel extends ConsoleKernel
             })
             ->hourly();
         
-        // Завершать зависшие викторины (каждую минуту)
+        // Завершать зависшие викторины (каждые 10 секунд)
+        // ВАЖНО: Эта команда должна запускаться каждые 10 секунд через cron напрямую
+        // Добавьте в crontab: * * * * * cd /path-to-project && php artisan quiz:finish-stuck >> /dev/null 2>&1
+        // И еще 5 записей с задержкой 10, 20, 30, 40, 50 секунд
+        // Или используйте: */10 * * * * * (если cron поддерживает секунды)
         $schedule->command('quiz:finish-stuck')
-            ->everyMinute()
+            ->everyMinute() // Fallback на случай, если cron не настроен
             ->withoutOverlapping();
         
         // Очищать старые завершенные викторины (старше 7 дней) - каждый день в 3:00

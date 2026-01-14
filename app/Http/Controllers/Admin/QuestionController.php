@@ -7,6 +7,7 @@ use App\Models\Question;
 use App\Services\TelegramService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class QuestionController extends Controller
 {
@@ -87,8 +88,13 @@ class QuestionController extends Controller
         if ($request->hasFile('image_file')) {
             $image = $request->file('image_file');
             $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
-            $path = $image->storeAs('public/questions', $filename);
-            $fullPath = storage_path('app/' . $path);
+            
+            // Убедиться, что директория существует
+            Storage::disk('public')->makeDirectory('questions');
+            
+            // Используем явно указанный диск 'public'
+            $path = $image->storeAs('questions', $filename, 'public');
+            $fullPath = Storage::disk('public')->path('questions/' . $filename);
             
             // Попытаться загрузить в Telegram и получить file_id (оптимизация)
             // Используем тестовый чат или первый доступный чат для загрузки
@@ -196,14 +202,19 @@ class QuestionController extends Controller
                 // Проверить, локальный ли это файл
                 if (strpos($question->image_url, 'storage/questions/') !== false) {
                     $oldFilename = basename($question->image_url);
-                    \Storage::delete('public/questions/' . $oldFilename);
+                    Storage::disk('public')->delete('questions/' . $oldFilename);
                 }
             }
             
             $image = $request->file('image_file');
             $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
-            $path = $image->storeAs('public/questions', $filename);
-            $fullPath = storage_path('app/' . $path);
+            
+            // Убедиться, что директория существует
+            Storage::disk('public')->makeDirectory('questions');
+            
+            // Используем явно указанный диск 'public'
+            $path = $image->storeAs('questions', $filename, 'public');
+            $fullPath = Storage::disk('public')->path('questions/' . $filename);
             
             // Попытаться загрузить в Telegram и получить file_id (оптимизация)
             try {

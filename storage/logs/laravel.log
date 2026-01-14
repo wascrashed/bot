@@ -4257,3 +4257,139 @@
 #20 {main}
 "} 
 [2026-01-12 05:20:32] laravel.WARNING: Slow Telegram API response {"method":"getMe","response_time_ms":3438.873052597046} 
+[2026-01-12 07:08:45] laravel.EMERGENCY: Unable to create configured logger. Using emergency logger. {"exception":"[object] (InvalidArgumentException(code: 0): Log [] is not defined. at C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php:212)
+[stacktrace]
+#0 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php(137): Illuminate/Log/LogManager->resolve(NULL, NULL)
+#1 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php(124): Illuminate/Log/LogManager->get(NULL)
+#2 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php(681): Illuminate/Log/LogManager->driver()
+#3 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Support/Facades/Facade.php(355): Illuminate/Log/LogManager->error('Telegram API re...', Array)
+#4 C:/Users/Administrator/Documents/GitHub/bot/app/Services/TelegramService.php(103): Illuminate/Support/Facades/Facade::__callStatic('error', Array)
+#5 C:/Users/Administrator/Documents/GitHub/bot/app/Services/TelegramService.php(307): App/Services/TelegramService->makeRequest('getMe', Array)
+#6 C:/Users/Administrator/Documents/GitHub/bot/app/Console/Commands/GetTelegramBotInfo.php(31): App/Services/TelegramService->getMe()
+#7 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(36): App/Console/Commands/GetTelegramBotInfo->handle(Object(App/Services/TelegramService))
+#8 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Util.php(41): Illuminate/Container/BoundMethod::Illuminate/Container/{closure}()
+#9 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(93): Illuminate/Container/Util::unwrapIfClosure(Object(Closure))
+#10 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(35): Illuminate/Container/BoundMethod::callBoundMethod(Object(Illuminate/Foundation/Application), Array, Object(Closure))
+#11 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Container.php(662): Illuminate/Container/BoundMethod::call(Object(Illuminate/Foundation/Application), Array, Array, NULL)
+#12 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(211): Illuminate/Container/Container->call(Array)
+#13 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Command/Command.php(326): Illuminate/Console/Command->execute(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#14 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(180): Symfony/Component/Console/Command/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#15 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(1106): Illuminate/Console/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#16 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(324): Symfony/Component/Console/Application->doRunCommand(Object(App/Console/Commands/GetTelegramBotInfo), Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#17 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(175): Symfony/Component/Console/Application->doRun(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#18 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(201): Symfony/Component/Console/Application->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#19 C:/Users/Administrator/Documents/GitHub/bot/artisan(14): Illuminate/Foundation/Console/Kernel->handle(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#20 {main}
+"} 
+[2026-01-12 07:08:45] laravel.ERROR: Telegram API request error {"method":"getMe","error":"Client error: `POST https://api.telegram.org/bot8172162265:AAF3tdXCF1ZgdCysgoqGH5_Jrv67nlZgV6w/getMe` resulted in a `401 Unauthorized` response:
+{\"ok\":false,\"error_code\":401,\"description\":\"Unauthorized\"}
+","attempt":1} 
+[2026-01-12 07:08:46] laravel.EMERGENCY: Unable to create configured logger. Using emergency logger. {"exception":"[object] (InvalidArgumentException(code: 0): Log [] is not defined. at C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php:212)
+[stacktrace]
+#0 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php(137): Illuminate/Log/LogManager->resolve(NULL, NULL)
+#1 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php(124): Illuminate/Log/LogManager->get(NULL)
+#2 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php(681): Illuminate/Log/LogManager->driver()
+#3 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Support/Facades/Facade.php(355): Illuminate/Log/LogManager->error('Telegram API re...', Array)
+#4 C:/Users/Administrator/Documents/GitHub/bot/app/Services/TelegramService.php(103): Illuminate/Support/Facades/Facade::__callStatic('error', Array)
+#5 C:/Users/Administrator/Documents/GitHub/bot/app/Services/TelegramService.php(307): App/Services/TelegramService->makeRequest('getMe', Array)
+#6 C:/Users/Administrator/Documents/GitHub/bot/app/Console/Commands/GetTelegramBotInfo.php(31): App/Services/TelegramService->getMe()
+#7 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(36): App/Console/Commands/GetTelegramBotInfo->handle(Object(App/Services/TelegramService))
+#8 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Util.php(41): Illuminate/Container/BoundMethod::Illuminate/Container/{closure}()
+#9 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(93): Illuminate/Container/Util::unwrapIfClosure(Object(Closure))
+#10 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(35): Illuminate/Container/BoundMethod::callBoundMethod(Object(Illuminate/Foundation/Application), Array, Object(Closure))
+#11 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Container.php(662): Illuminate/Container/BoundMethod::call(Object(Illuminate/Foundation/Application), Array, Array, NULL)
+#12 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(211): Illuminate/Container/Container->call(Array)
+#13 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Command/Command.php(326): Illuminate/Console/Command->execute(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#14 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(180): Symfony/Component/Console/Command/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#15 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(1106): Illuminate/Console/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#16 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(324): Symfony/Component/Console/Application->doRunCommand(Object(App/Console/Commands/GetTelegramBotInfo), Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#17 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(175): Symfony/Component/Console/Application->doRun(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#18 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(201): Symfony/Component/Console/Application->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#19 C:/Users/Administrator/Documents/GitHub/bot/artisan(14): Illuminate/Foundation/Console/Kernel->handle(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#20 {main}
+"} 
+[2026-01-12 07:08:46] laravel.ERROR: Telegram API request error {"method":"getMe","error":"Client error: `POST https://api.telegram.org/bot8172162265:AAF3tdXCF1ZgdCysgoqGH5_Jrv67nlZgV6w/getMe` resulted in a `401 Unauthorized` response:
+{\"ok\":false,\"error_code\":401,\"description\":\"Unauthorized\"}
+","attempt":2} 
+[2026-01-12 07:08:48] laravel.EMERGENCY: Unable to create configured logger. Using emergency logger. {"exception":"[object] (InvalidArgumentException(code: 0): Log [] is not defined. at C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php:212)
+[stacktrace]
+#0 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php(137): Illuminate/Log/LogManager->resolve(NULL, NULL)
+#1 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php(124): Illuminate/Log/LogManager->get(NULL)
+#2 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Log/LogManager.php(681): Illuminate/Log/LogManager->driver()
+#3 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Support/Facades/Facade.php(355): Illuminate/Log/LogManager->error('Telegram API re...', Array)
+#4 C:/Users/Administrator/Documents/GitHub/bot/app/Services/TelegramService.php(103): Illuminate/Support/Facades/Facade::__callStatic('error', Array)
+#5 C:/Users/Administrator/Documents/GitHub/bot/app/Services/TelegramService.php(307): App/Services/TelegramService->makeRequest('getMe', Array)
+#6 C:/Users/Administrator/Documents/GitHub/bot/app/Console/Commands/GetTelegramBotInfo.php(31): App/Services/TelegramService->getMe()
+#7 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(36): App/Console/Commands/GetTelegramBotInfo->handle(Object(App/Services/TelegramService))
+#8 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Util.php(41): Illuminate/Container/BoundMethod::Illuminate/Container/{closure}()
+#9 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(93): Illuminate/Container/Util::unwrapIfClosure(Object(Closure))
+#10 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(35): Illuminate/Container/BoundMethod::callBoundMethod(Object(Illuminate/Foundation/Application), Array, Object(Closure))
+#11 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Container.php(662): Illuminate/Container/BoundMethod::call(Object(Illuminate/Foundation/Application), Array, Array, NULL)
+#12 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(211): Illuminate/Container/Container->call(Array)
+#13 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Command/Command.php(326): Illuminate/Console/Command->execute(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#14 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(180): Symfony/Component/Console/Command/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#15 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(1106): Illuminate/Console/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#16 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(324): Symfony/Component/Console/Application->doRunCommand(Object(App/Console/Commands/GetTelegramBotInfo), Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#17 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(175): Symfony/Component/Console/Application->doRun(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#18 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(201): Symfony/Component/Console/Application->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#19 C:/Users/Administrator/Documents/GitHub/bot/artisan(14): Illuminate/Foundation/Console/Kernel->handle(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#20 {main}
+"} 
+[2026-01-12 07:08:48] laravel.ERROR: Telegram API request error {"method":"getMe","error":"Client error: `POST https://api.telegram.org/bot8172162265:AAF3tdXCF1ZgdCysgoqGH5_Jrv67nlZgV6w/getMe` resulted in a `401 Unauthorized` response:
+{\"ok\":false,\"error_code\":401,\"description\":\"Unauthorized\"}
+","attempt":3} 
+[2026-01-12 12:27:56] local.ERROR: Telegram API request error {"method":"getMe","error":"Client error: `POST https://api.telegram.org/bot8172162265:AAF3tdXCF1ZgdCysgoqGH5_Jrv67nlZgV6w/getMe` resulted in a `401 Unauthorized` response:
+{\"ok\":false,\"error_code\":401,\"description\":\"Unauthorized\"}
+","attempt":1} 
+[2026-01-12 12:27:57] local.ERROR: Telegram API request error {"method":"getMe","error":"Client error: `POST https://api.telegram.org/bot8172162265:AAF3tdXCF1ZgdCysgoqGH5_Jrv67nlZgV6w/getMe` resulted in a `401 Unauthorized` response:
+{\"ok\":false,\"error_code\":401,\"description\":\"Unauthorized\"}
+","attempt":2} 
+[2026-01-12 12:27:59] local.ERROR: Telegram API request error {"method":"getMe","error":"Client error: `POST https://api.telegram.org/bot8172162265:AAF3tdXCF1ZgdCysgoqGH5_Jrv67nlZgV6w/getMe` resulted in a `401 Unauthorized` response:
+{\"ok\":false,\"error_code\":401,\"description\":\"Unauthorized\"}
+","attempt":3} 
+[2026-01-12 13:11:13] local.ERROR: PHP Parse error: Syntax error, unexpected T_NS_SEPARATOR on line 1 {"exception":"[object] (Psy\\Exception\\ParseErrorException(code: 0): PHP Parse error: Syntax error, unexpected T_NS_SEPARATOR on line 1 at C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/Exception/ParseErrorException.php:44)
+[stacktrace]
+#0 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/CodeCleaner.php(488): Psy/Exception/ParseErrorException::fromParseError(Object(PhpParser/Error))
+#1 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/CodeCleaner.php(269): Psy/CodeCleaner->parse('<?php echo 'Que...', false)
+#2 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/Shell.php(985): Psy/CodeCleaner->clean(Array, false)
+#3 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/Shell.php(1018): Psy/Shell->addCode('echo 'Questions...', true)
+#4 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/Shell.php(1562): Psy/Shell->setCode('echo 'Questions...', true)
+#5 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/tinker/src/Console/TinkerCommand.php(76): Psy/Shell->execute('echo 'Questions...')
+#6 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(36): Laravel/Tinker/Console/TinkerCommand->handle()
+#7 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Util.php(41): Illuminate/Container/BoundMethod::Illuminate/Container/{closure}()
+#8 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(93): Illuminate/Container/Util::unwrapIfClosure(Object(Closure))
+#9 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(35): Illuminate/Container/BoundMethod::callBoundMethod(Object(Illuminate/Foundation/Application), Array, Object(Closure))
+#10 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Container.php(662): Illuminate/Container/BoundMethod::call(Object(Illuminate/Foundation/Application), Array, Array, NULL)
+#11 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(211): Illuminate/Container/Container->call(Array)
+#12 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Command/Command.php(326): Illuminate/Console/Command->execute(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#13 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(180): Symfony/Component/Console/Command/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#14 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(1106): Illuminate/Console/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#15 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(324): Symfony/Component/Console/Application->doRunCommand(Object(Laravel/Tinker/Console/TinkerCommand), Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#16 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(175): Symfony/Component/Console/Application->doRun(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#17 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(201): Symfony/Component/Console/Application->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#18 C:/Users/Administrator/Documents/GitHub/bot/artisan(14): Illuminate/Foundation/Console/Kernel->handle(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#19 {main}
+"} 
+[2026-01-12 13:12:36] local.ERROR: PHP Parse error: Syntax error, unexpected T_NS_SEPARATOR on line 1 {"exception":"[object] (Psy\\Exception\\ParseErrorException(code: 0): PHP Parse error: Syntax error, unexpected T_NS_SEPARATOR on line 1 at C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/Exception/ParseErrorException.php:44)
+[stacktrace]
+#0 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/CodeCleaner.php(488): Psy/Exception/ParseErrorException::fromParseError(Object(PhpParser/Error))
+#1 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/CodeCleaner.php(269): Psy/CodeCleaner->parse('<?php // = //App//...', false)
+#2 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/Shell.php(985): Psy/CodeCleaner->clean(Array, false)
+#3 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/Shell.php(1018): Psy/Shell->addCode('// = //App//Models...', true)
+#4 C:/Users/Administrator/Documents/GitHub/bot/vendor/psy/psysh/src/Shell.php(1562): Psy/Shell->setCode('// = //App//Models...', true)
+#5 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/tinker/src/Console/TinkerCommand.php(76): Psy/Shell->execute('// = //App//Models...')
+#6 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(36): Laravel/Tinker/Console/TinkerCommand->handle()
+#7 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Util.php(41): Illuminate/Container/BoundMethod::Illuminate/Container/{closure}()
+#8 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(93): Illuminate/Container/Util::unwrapIfClosure(Object(Closure))
+#9 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/BoundMethod.php(35): Illuminate/Container/BoundMethod::callBoundMethod(Object(Illuminate/Foundation/Application), Array, Object(Closure))
+#10 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Container/Container.php(662): Illuminate/Container/BoundMethod::call(Object(Illuminate/Foundation/Application), Array, Array, NULL)
+#11 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(211): Illuminate/Container/Container->call(Array)
+#12 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Command/Command.php(326): Illuminate/Console/Command->execute(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#13 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Console/Command.php(180): Symfony/Component/Console/Command/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Illuminate/Console/OutputStyle))
+#14 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(1106): Illuminate/Console/Command->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#15 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(324): Symfony/Component/Console/Application->doRunCommand(Object(Laravel/Tinker/Console/TinkerCommand), Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#16 C:/Users/Administrator/Documents/GitHub/bot/vendor/symfony/console/Application.php(175): Symfony/Component/Console/Application->doRun(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#17 C:/Users/Administrator/Documents/GitHub/bot/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(201): Symfony/Component/Console/Application->run(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#18 C:/Users/Administrator/Documents/GitHub/bot/artisan(14): Illuminate/Foundation/Console/Kernel->handle(Object(Symfony/Component/Console/Input/ArgvInput), Object(Symfony/Component/Console/Output/ConsoleOutput))
+#19 {main}
+"} 

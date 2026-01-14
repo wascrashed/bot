@@ -10,7 +10,7 @@ use Carbon\Carbon;
 class FinishStuckQuizzes extends Command
 {
     protected $signature = 'quiz:finish-stuck';
-    protected $description = 'Завершить зависшие викторины (старше 30 секунд)';
+    protected $description = 'Завершить истекшие викторины (expires_at <= now)';
 
     public function handle(QuizService $quizService)
     {
