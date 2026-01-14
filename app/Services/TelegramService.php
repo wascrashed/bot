@@ -326,13 +326,21 @@ class TelegramService
     public function sendMessageWithButtons(int $chatId, string $text, array $buttons, array $options = []): ?array
     {
         $inlineKeyboard = [];
-        
+
         foreach ($buttons as $row) {
             $inlineKeyboard[] = array_map(function($button) {
-                return [
-                    'text' => $button['text'],
-                    'callback_data' => $button['callback_data'] ?? '',
-                ];
+                $buttonData = ['text' => $button['text']];
+                
+                // Поддерживаем оба типа кнопок: URL и callback_data
+                if (isset($button['url'])) {
+                    $buttonData['url'] = $button['url'];
+                } elseif (isset($button['callback_data'])) {
+                    $buttonData['callback_data'] = $button['callback_data'];
+                } else {
+                    $buttonData['callback_data'] = '';
+                }
+                
+                return $buttonData;
             }, $row);
         }
 

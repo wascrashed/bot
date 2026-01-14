@@ -1431,19 +1431,23 @@ class TelegramWebhookController extends Controller
             $dotabuffService = new DotabuffService();
             
             // Определяем тип чата (личный или группа)
+            // В Telegram: личные чаты имеют положительный chat_id, группы - отрицательный
             $isPrivateChat = $chatId > 0;
 
             // В группе - только краткая информация: ник + рейтинг (как в Dotabuff)
-            if (!$isPrivateChat) {
+            if ($chatId < 0) {
                 $nickname = $profile->game_nickname ?? ($from['first_name'] ?? 'Пользователь');
                 $rank = $profile->getFormattedRank();
                 $message = "<b>{$nickname}</b> {$rank}";
                 $telegramService->sendMessage($chatId, $message, ['parse_mode' => 'HTML']);
-                return;
+                return; // ВАЖНО: выходим сразу, не показываем полный профиль
             }
 
             // В личном чате - полная информация
             $message = "👤 <b>Ваш профиль</b>\n\n";
+
+            // ID
+            $message .= "🆔 <b>ID:</b> <code>{$userId}</code>\n";
 
             // Имя
             $firstName = $from['first_name'] ?? 'Пользователь';
@@ -1461,8 +1465,11 @@ class TelegramWebhookController extends Controller
                 $message .= "📱 <b>Username:</b> Не указан\n";
             }
 
+            $message .= "\n";
+
             // Рейтинг в боте
-            $message .= "🏆 <b>Рейтинг в боте:</b> {$profile->getFormattedRank()}\n";
+            $message .= "🏆 <b>Рейтинг в боте:</b>\n";
+            $message .= "{$profile->getFormattedRank()}\n";
             
             // Синхронизировать данные с Dotabuff (если прошло больше часа)
             if ($profile->dotabuff_url) {
@@ -1510,20 +1517,24 @@ class TelegramWebhookController extends Controller
             $showRankStatus = $profile->show_rank_in_name ? "✅ Включено" : "❌ Выключено";
             $message .= "Показывать рейтинг рядом с именем: {$showRankStatus}\n\n";
 
-            // Кнопки для настройки
+            // Получаем username бота для создания ссылки
+            $botInfo = $telegramService->getMe();
+            $botUsername = $botInfo['username'] ?? 'tajdota_quiz_bot';
+            $botUrl = "https://t.me/{$botUsername}?start=profile";
+
+            // Кнопки: Редактировать профиль (переход в личный чат) и переход на бота
             $buttons = [
                 [
-                    ['text' => '✏️ Настроить ник', 'callback_data' => 'profile_set_nickname'],
-                    ['text' => '🔗 Настроить Dotabuff', 'callback_data' => 'profile_set_dotabuff'],
+                    [
+                        'text' => '✏️ Редактировать профиль',
+                        'url' => $botUrl
+                    ]
                 ],
                 [
                     [
-                        'text' => $profile->show_rank_in_name ? '👁️ Скрыть рейтинг' : '👁️ Показать рейтинг',
-                        'callback_data' => 'profile_toggle_rank'
-                    ],
-                ],
-                [
-                    ['text' => '🔄 Обновить профиль', 'callback_data' => 'profile_refresh'],
+                        'text' => '🤖 Перейти к боту',
+                        'url' => "https://t.me/{$botUsername}"
+                    ]
                 ],
             ];
             
